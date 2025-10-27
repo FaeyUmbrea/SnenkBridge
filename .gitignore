@@ -1,4 +1,33 @@
+# Rust
 /target
+**/*.rs.bk
+*.exe
+*.pdb
+*.d
+
+# Logs
 /log
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Tokens
 token
-*.json
+
+# Local config files
+bridger.json
+ui-cfg.json
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store

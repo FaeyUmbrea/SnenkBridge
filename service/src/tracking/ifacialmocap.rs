@@ -71,13 +71,17 @@ impl TrackingClient for IFacialMocapTrackingClinet {
 
                                                 let data_to_parse =
                                                     &partial_buffer[first_start..second_start];
-                                                let tracking_response =
-                                                    parse_tracking_string(&data_to_parse).unwrap();
+                                                match parse_tracking_string(&data_to_parse) {
+                                                    Ok(d) => {
+                                                        Self::send(&sender_clone, d);
 
-                                                Self::send(&sender_clone, tracking_response);
-
-                                                partial_buffer.replace_range(0..second_start, "");
-                                                matches = re.find_iter(&partial_buffer).collect();
+                                                        partial_buffer
+                                                            .replace_range(0..second_start, "");
+                                                        matches =
+                                                            re.find_iter(&partial_buffer).collect();
+                                                    }
+                                                    Err(_) => {}
+                                                };
                                             }
                                         }
                                     }
