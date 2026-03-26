@@ -8,7 +8,7 @@ use std::{
 };
 
 use clap::Parser;
-use sandoitchi_bridge_service::{
+use snenk_bridge_service::{
     tracking::{
         client::{TrackingClient, TrackingClientType},
         ifacialmocap::IFacialMocapTrackingClinet,
@@ -61,7 +61,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    println!("Github: https://github.com/an1by/SandoitchiBridge");
+    println!("Github: https://github.com/an1by/SnenkBridge");
 
     let active_flag = Arc::new(AtomicBool::new(true));
     let active_flag_clone = Arc::clone(&active_flag);
@@ -79,7 +79,8 @@ fn main() {
             args.config,
             args.config_reload_delay,
             args.face_search_timeout,
-        ).run(active_flag);
+        )
+        .run(active_flag);
     });
 
     let function: fn(ip: String, sender: Sender<TrackingResponse>, active: Arc<AtomicBool>);

@@ -1,6 +1,6 @@
 use eframe::egui;
 use egui_file::FileDialog;
-use sandoitchi_bridge_service::{
+use snenk_bridge_service::{
     tracking::{
         client::{TrackingClient, TrackingClientType},
         ifacialmocap::IFacialMocapTrackingClinet,

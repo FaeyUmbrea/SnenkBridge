@@ -3125,57 +3125,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandoitchi_bridge"
-version = "0.3.0"
-dependencies = [
- "clap",
- "evalexpr",
- "log",
- "log4rs",
- "native-windows-derive",
- "native-windows-gui",
- "sandoitchi_bridge_service",
- "serde",
- "serde_json",
- "serde_yaml",
- "tungstenite",
-]
-
-[[package]]
-name = "sandoitchi_bridge_service"
-version = "0.3.0"
-dependencies = [
- "clap",
- "evalexpr",
- "local-ip-address",
- "log",
- "log4rs",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "tungstenite",
-]
-
-[[package]]
-name = "sandoitchi_bridge_ui"
-version = "0.3.0"
-dependencies = [
- "clap",
- "eframe",
- "egui_file",
- "embed-resource",
- "evalexpr",
- "log",
- "log4rs",
- "sandoitchi_bridge_service",
- "serde",
- "serde_json",
- "serde_yaml",
- "tungstenite",
-]
-
-[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3422,6 +3371,57 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "snenk_bridge"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "evalexpr",
+ "log",
+ "log4rs",
+ "native-windows-derive",
+ "native-windows-gui",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "snenk_bridge_service",
+ "tungstenite",
+]
+
+[[package]]
+name = "snenk_bridge_service"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "evalexpr",
+ "local-ip-address",
+ "log",
+ "log4rs",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tungstenite",
+]
+
+[[package]]
+name = "snenk_bridge_ui"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "eframe",
+ "egui_file",
+ "embed-resource",
+ "evalexpr",
+ "log",
+ "log4rs",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "snenk_bridge_service",
+ "tungstenite",
 ]
 
 [[package]]

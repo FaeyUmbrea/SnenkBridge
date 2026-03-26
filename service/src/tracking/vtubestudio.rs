@@ -24,7 +24,7 @@ impl TrackingClient for VTubeStudioTrackingClient {
 
         let request_traking: String = serde_json::json!({
             "messageType":"iOSTrackingDataRequest",
-            "sentBy": "SandoitchiBridge",
+            "sentBy": "SnenkBridge",
             "sendForSeconds": 10,
             "ports": [port]
         })

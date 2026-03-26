@@ -1,12 +1,12 @@
 [package]
-name = "sandoitchi_bridge_ui"
+name = "snenk_bridge_ui"
 version = "0.3.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sandoitchi_bridge_service = { path = "../service" }
+snenk_bridge_service = { path = "../service" }
 clap = { version = "4.5.16", features = ["derive"] }
 evalexpr = "11.3.0"
 log = "0.4.22"

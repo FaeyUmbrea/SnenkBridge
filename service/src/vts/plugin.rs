@@ -68,7 +68,7 @@ pub struct VTubeStudioPlugin {
 }
 
 impl VTubeStudioPlugin {
-    const REQUEST_ID: &str = "SandoitchiBridge";
+    const REQUEST_ID: &str = "SnenkBridge";
     const VTS_API_VERSION: &str = "1.0";
     const AFK_PARAMETERS: [&str; 3] = ["FaceFound", "Wave", "PingPong"];
 
@@ -528,7 +528,7 @@ impl VTubeStudioPlugin {
             let tk = token.clone().unwrap();
 
             let auth_token = requests::Auth {
-                plugin_name: "SandoitchiBridge",
+                plugin_name: "SnenkBridge",
                 plugin_developer: "An1by",
                 authentication_token: tk.as_str(),
             };
@@ -548,7 +548,7 @@ impl VTubeStudioPlugin {
         }
 
         let auth_data = requests::AuthToken {
-            plugin_name: "SandoitchiBridge",
+            plugin_name: "SnenkBridge",
             plugin_developer: "An1by",
             plugin_icon: None,
         };
@@ -625,7 +625,7 @@ impl VTubeStudioPlugin {
             if !def_params.contains(&name) {
                 let param_data = requests::ParameterCreation {
                     parameter_name: name.clone(),
-                    explanation: "Custom Sandoitchi Bridge param".to_string(),
+                    explanation: "Custom Snenk Bridge param".to_string(),
                     min: func.min,
                     max: func.max,
                     default_value: func.default_value,

@@ -1,5 +1,5 @@
 [package]
-name = "sandoitchi_bridge_service"
+name = "snenk_bridge_service"
 version = "0.3.0"
 edition = "2021"
 

@@ -1,5 +1,5 @@
 [package]
-name = "sandoitchi_bridge"
+name = "snenk_bridge"
 version = "0.3.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 members = ["ui", "service"]
 
 [dependencies]
-sandoitchi_bridge_service = { path = "./service" }
+snenk_bridge_service = { path = "./service" }
 clap = { version = "4.5.16", features = ["derive"] }
 evalexpr = { version = "11.3.0", features = ["rand"] }
 log = "0.4.22"

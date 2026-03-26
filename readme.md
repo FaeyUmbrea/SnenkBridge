@@ -1,4 +1,4 @@
-# Sandoitchi Bridge
+# Snenk Bridge
 
 Receive tracking data from [tracking apps](#supported-tracking-apps) on iPhone, then modify the data
 according to the configuration and send to [VTubeStudio](https://store.steampowered.com/app/1325860/VTube_Studio/) on PC.
@@ -17,7 +17,7 @@ There 2 ways to use it: CLI and UI
 
 ### UI
 
-1. Launch `sandoitchi_bridge_ui.exe`;
+1. Launch `snenk_bridge_ui.exe`;
 2. Set path to config file (type it or use button);
 3. Type **Local** phone IP address;
 4. Select your tracking application;
@@ -30,7 +30,7 @@ There 2 ways to use it: CLI and UI
 
 ### CLI
 
-For CLI use `sandoitchi_bridge.exe` with launch arguments.
+For CLI use `snenk_bridge.exe` with launch arguments.
 
 #### Arguments
 

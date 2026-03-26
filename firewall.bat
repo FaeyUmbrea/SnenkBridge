@@ -29,5 +29,5 @@ if '%errorlevel%' NEQ '0' (
     CD /D "%~dp0"
 :--------------------------------------
 
-netsh advfirewall firewall add rule name="SandoitchiBridge" dir=in action=allow program="%~dp0sandoitchi_bridge.exe" enable=yes profile=public,private
-netsh advfirewall firewall add rule name="SandoitchiBridgeUi" dir=in action=allow program="%~dp0sandoitchi_bridge_ui.exe" enable=yes profile=public,private
+netsh advfirewall firewall add rule name="SnenkBridge" dir=in action=allow program="%~dp0snenk_bridge.exe" enable=yes profile=public,private
+netsh advfirewall firewall add rule name="SnenkBridgeUi" dir=in action=allow program="%~dp0snenk_bridge_ui.exe" enable=yes profile=public,private
