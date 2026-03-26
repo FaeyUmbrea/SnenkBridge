@@ -1,10 +1,25 @@
 use eframe::egui;
 use egui_file::FileDialog;
-use sandoitchi_bridge_service::tracking::client::TrackingClientType;
+use sandoitchi_bridge_service::{
+    tracking::{
+        client::{TrackingClient, TrackingClientType},
+        ifacialmocap::IFacialMocapTrackingClinet,
+        response::TrackingResponse,
+        vtubestudio::VTubeStudioTrackingClient,
+    },
+    vts::plugin::VTubeStudioPlugin,
+};
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, Sender},
+        Arc,
+    },
+    thread::{self},
 };
+use tungstenite::connect;
 
 fn main() {
     let native_options = eframe::NativeOptions {
@@ -28,7 +43,7 @@ struct SnenkBridgeUI {
     face_search_timeout: i64,
 
     #[serde(skip)]
-    active: bool,
+    active: Arc<AtomicBool>,
     #[serde(skip)]
     opened_file: Option<PathBuf>,
     #[serde(skip)]
@@ -42,7 +57,7 @@ impl Default for SnenkBridgeUI {
             ip: "127.0.0.1".to_string(),
             tracking_client_type: TrackingClientType::VTubeStudio,
             face_search_timeout: 3000,
-            active: false,
+            active: Arc::new(AtomicBool::new(false)),
             open_file_dialog: None,
             opened_file: None,
         }
@@ -57,6 +72,43 @@ impl SnenkBridgeUI {
             Default::default()
         }
     }
+
+    fn connect(&self) {
+        if !self.active.load(Ordering::Relaxed) {
+            self.active.store(true, Ordering::Relaxed);
+            let path = self.transform_path.clone();
+            let ip = self.ip.clone();
+            let face_search_timeout: i64 = self.face_search_timeout.clone();
+
+            let (sender, receiver): (Sender<TrackingResponse>, Receiver<TrackingResponse>) =
+                mpsc::channel();
+
+            let flag_pc = Arc::clone(&self.active);
+            let flag_ph = Arc::clone(&self.active);
+
+            let _ = thread::spawn(move || {
+                VTubeStudioPlugin::new(receiver, path, 0, face_search_timeout.unsigned_abs())
+                    .run(flag_pc);
+            });
+
+            let function: fn(
+                ip: String,
+                sender: Sender<TrackingResponse>,
+                active: Arc<AtomicBool>,
+            );
+            match self.tracking_client_type {
+                TrackingClientType::VTubeStudio => function = VTubeStudioTrackingClient::run,
+                TrackingClientType::IFacialMocap => function = IFacialMocapTrackingClinet::run,
+            }
+            let _ = thread::spawn(move || function(ip, sender, flag_ph));
+
+            //Make everything uneditable while service is running
+        } else {
+            self.active.store(false, Ordering::Relaxed);
+
+            //make everything editable again
+        }
+    }
 }
 
 impl eframe::App for SnenkBridgeUI {
@@ -64,11 +116,8 @@ impl eframe::App for SnenkBridgeUI {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
-
             ui.horizontal(|ui| {
                 ui.label("Config File");
                 ui.text_edit_singleline(&mut self.transform_path);
@@ -120,6 +169,17 @@ impl eframe::App for SnenkBridgeUI {
                         );
                     })
             });
+
+            ui.horizontal(|ui| {
+                if (ui.button("Start Tracking")).clicked() {
+                    self.connect();
+                }
+            })
         });
     }
 }
+
+const TRACKING_CLIENT_TYPES: [TrackingClientType; 2] = [
+    TrackingClientType::VTubeStudio,
+    TrackingClientType::IFacialMocap,
+];
