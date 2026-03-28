@@ -3367,6 +3367,7 @@ dependencies = [
  "evalexpr",
  "log",
  "log4rs",
+ "pollster",
  "rfd",
  "serde",
  "serde_json",

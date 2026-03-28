@@ -1,6 +1,5 @@
 use eframe::egui;
 use log4rs;
-use rfd::FileDialog;
 use snenk_bridge_service::{
     tracking::{
         client::{TrackingClient, TrackingClientType},
@@ -11,14 +10,13 @@ use snenk_bridge_service::{
     vts::plugin::VTubeStudioPlugin,
 };
 use std::{
-    ffi::OsStr,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::{self, Receiver, Sender},
         Arc,
     },
-    thread::{self},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -59,6 +57,8 @@ struct SnenkBridgeUI {
     last_packet_time: Instant,
     #[serde(skip)]
     packet_rate: f64,
+    #[serde(skip)]
+    file_dialog_receiver: Option<Receiver<Option<std::path::PathBuf>>>,
 }
 
 impl Default for SnenkBridgeUI {
@@ -74,6 +74,7 @@ impl Default for SnenkBridgeUI {
             last_packet_count: 0,
             last_packet_time: Instant::now(),
             packet_rate: 0.0,
+            file_dialog_receiver: None,
         }
     }
 }
@@ -92,7 +93,45 @@ impl SnenkBridgeUI {
         ui.last_packet_count = 0;
         ui.last_packet_time = Instant::now();
         ui.packet_rate = 0.0;
+        ui.file_dialog_receiver = None;
         ui
+    }
+
+    fn open_file_dialog(&mut self, ctx: &egui::Context) {
+        // Don't open a second dialog if one is already pending
+        if self.file_dialog_receiver.is_some() {
+            return;
+        }
+
+        let (sender, receiver) = mpsc::channel();
+        self.file_dialog_receiver = Some(receiver);
+
+        let ctx_clone = ctx.clone();
+        thread::spawn(move || {
+            let result = rfd::AsyncFileDialog::new()
+                .add_filter("Config files", &["json", "vps"])
+                .add_filter("JSON", &["json"])
+                .add_filter("Vitamins preset", &["vps"])
+                .pick_file();
+
+            // Block on the async result in this background thread
+            let path = pollster::block_on(result).map(|handle| handle.path().to_path_buf());
+
+            let _ = sender.send(path);
+            // Wake up the UI thread so it checks the receiver
+            ctx_clone.request_repaint();
+        });
+    }
+
+    fn poll_file_dialog(&mut self) {
+        if let Some(receiver) = &self.file_dialog_receiver {
+            if let Ok(result) = receiver.try_recv() {
+                if let Some(path) = result {
+                    self.transform_path = path.to_string_lossy().to_string();
+                }
+                self.file_dialog_receiver = None;
+            }
+        }
     }
 
     fn connect(&mut self) {
@@ -112,7 +151,7 @@ impl SnenkBridgeUI {
 
             let path = self.transform_path.clone();
             let ip = self.ip.clone();
-            let face_search_timeout: i64 = self.face_search_timeout.clone();
+            let face_search_timeout: i64 = self.face_search_timeout;
 
             let (tracking_sender, tracking_receiver): (
                 Sender<TrackingResponse>,
@@ -178,18 +217,21 @@ impl eframe::App for SnenkBridgeUI {
     }
 
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // Poll for file dialog results each frame
+        self.poll_file_dialog();
+
         egui::CentralPanel::default().show(ctx, |ui| {
             let editing_enabled = !self.active.load(Ordering::Relaxed);
             ui.add_enabled_ui(editing_enabled, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Config File");
                     ui.text_edit_singleline(&mut self.transform_path);
-                    if (ui.button("...")).clicked() {
-                        let file = FileDialog::new().add_filter("json", &["json"]).pick_file();
-                        if let Some(path) = file {
-                            self.transform_path = path.to_string_lossy().to_string();
+                    let dialog_pending = self.file_dialog_receiver.is_some();
+                    ui.add_enabled_ui(!dialog_pending, |ui| {
+                        if ui.button("...").clicked() {
+                            self.open_file_dialog(ctx);
                         }
-                    }
+                    });
                 });
 
                 ui.horizontal(|ui| {
@@ -250,10 +292,10 @@ impl eframe::App for SnenkBridgeUI {
                 } else {
                     "Start Tracking"
                 };
-                if (ui.button(button_text)).clicked() {
+                if ui.button(button_text).clicked() {
                     self.connect();
                 }
-            })
+            });
         });
     }
 }
