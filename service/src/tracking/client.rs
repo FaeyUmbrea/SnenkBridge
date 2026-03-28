@@ -3,6 +3,8 @@ use std::{
     sync::{atomic::AtomicBool, mpsc::Sender, Arc},
 };
 
+use log::warn;
+
 use serde::{Deserialize, Serialize};
 
 use crate::tracking::response::TrackingResponse;
@@ -12,7 +14,9 @@ pub trait TrackingClient {
 
     // Something like middleware
     fn send(sender: &Sender<TrackingResponse>, response: TrackingResponse) {
-        sender.send(response).unwrap();
+        if let Err(error) = sender.send(response) {
+            warn!("Unable to send tracking response: {:?}", error);
+        }
     }
 }
 

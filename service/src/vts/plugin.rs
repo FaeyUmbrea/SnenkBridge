@@ -359,7 +359,7 @@ impl VTubeStudioPlugin {
                 .unwrap();
             if face_found == 1.0 {
                 let timestamp = self.last_context_timestamp.lock().unwrap();
-                let difference = *timestamp as f64 - get_current_timestamp() as f64;
+                let difference = get_current_timestamp() as f64 - *timestamp as f64;
                 let timeout = *face_search_timeout as f64;
                 if difference > timeout {
                     face_found = 0.0;
@@ -613,8 +613,27 @@ impl VTubeStudioPlugin {
         ];
 
         let mut new_params: VecDeque<Message> = VecDeque::new();
-        let config = fs::read_to_string(&self.transformation_cfg_path).unwrap();
-        let calc_fns: Vec<CalcFn> = serde_json::from_str(&config[..]).unwrap();
+        let config = match fs::read_to_string(&self.transformation_cfg_path) {
+            Ok(content) => content,
+            Err(error) => {
+                warn!(
+                    "Unable to load transformation config '{}': {}",
+                    &self.transformation_cfg_path, error
+                );
+                return (Vec::new(), HashSet::new(), new_params);
+            }
+        };
+
+        let calc_fns: Vec<CalcFn> = match serde_json::from_str(&config[..]) {
+            Ok(value) => value,
+            Err(error) => {
+                warn!(
+                    "Unable to parse transformation config '{}': {}",
+                    &self.transformation_cfg_path, error
+                );
+                return (Vec::new(), HashSet::new(), new_params);
+            }
+        };
 
         let mut timestamps = HashSet::new();
         let mut precalc_fns: Vec<_> = Vec::new();

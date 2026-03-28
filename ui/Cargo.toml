@@ -16,7 +16,7 @@ serde_json = "1.0.128"
 serde_yaml = "0.9.34"
 tungstenite = "0.24.0"
 eframe = { version = "0.33.3", features = ["default_fonts", "persistence"] }
-egui_file = "0.25.0"
+rfd = "0.17.2"
 
 [build-dependencies]
 embed-resource = "1.3"

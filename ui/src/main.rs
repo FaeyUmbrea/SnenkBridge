@@ -1,5 +1,6 @@
 use eframe::egui;
-use egui_file::FileDialog;
+use log4rs;
+use rfd::FileDialog;
 use snenk_bridge_service::{
     tracking::{
         client::{TrackingClient, TrackingClientType},
@@ -13,15 +14,19 @@ use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::{self, Receiver, Sender},
         Arc,
     },
     thread::{self},
+    time::{Duration, Instant},
 };
-use tungstenite::connect;
 
 fn main() {
+    let log_config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../configs/log_cfg.yml");
+    log4rs::init_file(log_config_path, Default::default())
+        .expect("Unable to initialize logging from configs/log_cfg.yml");
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([300.0, 180.0]),
         ..Default::default()
@@ -45,9 +50,15 @@ struct SnenkBridgeUI {
     #[serde(skip)]
     active: Arc<AtomicBool>,
     #[serde(skip)]
-    opened_file: Option<PathBuf>,
+    packet_count: Arc<AtomicUsize>,
     #[serde(skip)]
-    open_file_dialog: Option<FileDialog>,
+    config_error: Option<String>,
+    #[serde(skip)]
+    last_packet_count: usize,
+    #[serde(skip)]
+    last_packet_time: Instant,
+    #[serde(skip)]
+    packet_rate: f64,
 }
 
 impl Default for SnenkBridgeUI {
@@ -58,37 +69,88 @@ impl Default for SnenkBridgeUI {
             tracking_client_type: TrackingClientType::VTubeStudio,
             face_search_timeout: 3000,
             active: Arc::new(AtomicBool::new(false)),
-            open_file_dialog: None,
-            opened_file: None,
+            packet_count: Arc::new(AtomicUsize::new(0)),
+            config_error: None,
+            last_packet_count: 0,
+            last_packet_time: Instant::now(),
+            packet_rate: 0.0,
         }
     }
 }
 
 impl SnenkBridgeUI {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        if let Some(storage) = cc.storage {
+        let mut ui: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
-        }
+        };
+
+        ui.active = Arc::new(AtomicBool::new(false));
+        ui.packet_count = Arc::new(AtomicUsize::new(0));
+        ui.config_error = None;
+        ui.last_packet_count = 0;
+        ui.last_packet_time = Instant::now();
+        ui.packet_rate = 0.0;
+        ui
     }
 
-    fn connect(&self) {
+    fn connect(&mut self) {
         if !self.active.load(Ordering::Relaxed) {
+            self.config_error = None;
+            let config_path = Path::new(&self.transform_path);
+            if !config_path.is_file() {
+                self.config_error = Some(format!("Config file not found: {}", self.transform_path));
+                return;
+            }
+
             self.active.store(true, Ordering::Relaxed);
+            self.packet_count.store(0, Ordering::Relaxed);
+            self.last_packet_count = 0;
+            self.packet_rate = 0.0;
+            self.last_packet_time = Instant::now();
+
             let path = self.transform_path.clone();
             let ip = self.ip.clone();
             let face_search_timeout: i64 = self.face_search_timeout.clone();
 
-            let (sender, receiver): (Sender<TrackingResponse>, Receiver<TrackingResponse>) =
-                mpsc::channel();
+            let (tracking_sender, tracking_receiver): (
+                Sender<TrackingResponse>,
+                Receiver<TrackingResponse>,
+            ) = mpsc::channel();
+            let (plugin_sender, plugin_receiver): (
+                Sender<TrackingResponse>,
+                Receiver<TrackingResponse>,
+            ) = mpsc::channel();
 
             let flag_pc = Arc::clone(&self.active);
             let flag_ph = Arc::clone(&self.active);
+            let packet_counter = Arc::clone(&self.packet_count);
+            let active_clone = Arc::clone(&self.active);
 
             let _ = thread::spawn(move || {
-                VTubeStudioPlugin::new(receiver, path, 0, face_search_timeout.unsigned_abs())
-                    .run(flag_pc);
+                while active_clone.load(Ordering::Relaxed) {
+                    match tracking_receiver.recv_timeout(Duration::from_millis(200)) {
+                        Ok(response) => {
+                            packet_counter.fetch_add(1, Ordering::Relaxed);
+                            if plugin_sender.send(response).is_err() {
+                                break;
+                            }
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+            });
+
+            let _ = thread::spawn(move || {
+                VTubeStudioPlugin::new(
+                    plugin_receiver,
+                    path,
+                    0,
+                    face_search_timeout.unsigned_abs(),
+                )
+                .run(flag_pc);
             });
 
             let function: fn(
@@ -100,13 +162,12 @@ impl SnenkBridgeUI {
                 TrackingClientType::VTubeStudio => function = VTubeStudioTrackingClient::run,
                 TrackingClientType::IFacialMocap => function = IFacialMocapTrackingClinet::run,
             }
-            let _ = thread::spawn(move || function(ip, sender, flag_ph));
-
-            //Make everything uneditable while service is running
+            let _ = thread::spawn(move || function(ip, tracking_sender, flag_ph));
         } else {
             self.active.store(false, Ordering::Relaxed);
-
-            //make everything editable again
+            self.packet_count.store(0, Ordering::Relaxed);
+            self.last_packet_count = 0;
+            self.packet_rate = 0.0;
         }
     }
 }
@@ -118,68 +179,81 @@ impl eframe::App for SnenkBridgeUI {
 
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Config File");
-                ui.text_edit_singleline(&mut self.transform_path);
-                if (ui.button("...")).clicked() {
-                    let filter = Box::new({
-                        let ext = Some(OsStr::new("json"));
-                        move |path: &Path| -> bool { path.extension() == ext }
-                    });
-
-                    let mut dialog = FileDialog::open_file().show_files_filter(filter);
-                    if let Some(mut path) = self.opened_file.clone() {
-                        if path.pop() {
-                            dialog = dialog.initial_path(path);
+            let editing_enabled = !self.active.load(Ordering::Relaxed);
+            ui.add_enabled_ui(editing_enabled, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Config File");
+                    ui.text_edit_singleline(&mut self.transform_path);
+                    if (ui.button("...")).clicked() {
+                        let file = FileDialog::new().add_filter("json", &["json"]).pick_file();
+                        if let Some(path) = file {
+                            self.transform_path = path.to_string_lossy().to_string();
                         }
                     }
+                });
 
-                    dialog.open();
-                    self.open_file_dialog = Some(dialog);
-                }
+                ui.horizontal(|ui| {
+                    ui.label("Phone IP");
+                    ui.text_edit_singleline(&mut self.ip);
+                });
 
-                if let Some(dialog) = &mut self.open_file_dialog {
-                    if dialog.show(ctx).selected() {
-                        if let Some(file) = dialog.path() {
-                            self.opened_file = Some(file.to_path_buf());
-                            self.transform_path = file.to_str().unwrap_or_default().into();
-                        }
-                    }
-                }
+                ui.horizontal(|ui| {
+                    ui.label("Face search timeout (ms)");
+                    ui.add(egui::DragValue::new(&mut self.face_search_timeout).range(0..=60_000));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Tracking Type");
+                    egui::ComboBox::from_label("Tracking Type")
+                        .selected_text(format!("{:?}", self.tracking_client_type))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.tracking_client_type,
+                                TrackingClientType::VTubeStudio,
+                                "VTubeStudio",
+                            );
+                            ui.selectable_value(
+                                &mut self.tracking_client_type,
+                                TrackingClientType::IFacialMocap,
+                                "IFacialMocap",
+                            );
+                        });
+                });
+            });
+
+            if let Some(error) = &self.config_error {
+                ui.horizontal(|ui| {
+                    ui.colored_label(egui::Color32::RED, error);
+                });
+            }
+
+            let now = Instant::now();
+            let current_count = self.packet_count.load(Ordering::Relaxed);
+            let elapsed = now.duration_since(self.last_packet_time);
+            if elapsed.as_secs_f64() >= 0.5 {
+                self.packet_rate = if current_count >= self.last_packet_count {
+                    (current_count - self.last_packet_count) as f64 / elapsed.as_secs_f64()
+                } else {
+                    0.0
+                };
+                self.last_packet_count = current_count;
+                self.last_packet_time = now;
+            }
+
+            ui.horizontal(|ui| {
+                ui.label(format!("Packets/s: {:.1}", self.packet_rate));
             });
 
             ui.horizontal(|ui| {
-                ui.label("Phone IP");
-                ui.text_edit_singleline(&mut self.ip);
-            });
-
-            ui.horizontal(|ui| {
-                egui::ComboBox::from_label("Tracking Type")
-                    .selected_text(format!("{:?}", self.tracking_client_type))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.tracking_client_type,
-                            TrackingClientType::VTubeStudio,
-                            "VTubeStudio",
-                        );
-                        ui.selectable_value(
-                            &mut self.tracking_client_type,
-                            TrackingClientType::IFacialMocap,
-                            "IFacialMocap",
-                        );
-                    })
-            });
-
-            ui.horizontal(|ui| {
-                if (ui.button("Start Tracking")).clicked() {
+                let button_text = if self.active.load(Ordering::Relaxed) {
+                    "Stop Tracking"
+                } else {
+                    "Start Tracking"
+                };
+                if (ui.button(button_text)).clicked() {
                     self.connect();
                 }
             })
         });
     }
 }
-
-const TRACKING_CLIENT_TYPES: [TrackingClientType; 2] = [
-    TrackingClientType::VTubeStudio,
-    TrackingClientType::IFacialMocap,
-];
