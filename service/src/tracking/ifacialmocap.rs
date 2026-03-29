@@ -40,6 +40,8 @@ impl TrackingClient for IFacialMocapTrackingClinet {
             let listener = TcpListener::bind(&address).unwrap();
             println!("TCP server listening on {address}");
 
+            let re = Regex::new("___iFacialMocaptrackingStatus-[01]\\|").unwrap();
+
             for stream in listener.incoming() {
                 if !active.load(Ordering::Relaxed) {
                     return;
@@ -48,6 +50,7 @@ impl TrackingClient for IFacialMocapTrackingClinet {
                 match stream {
                     Ok(mut stream) => {
                         let sender_clone = sender.clone();
+                        let re = re.clone();
                         thread::spawn(move || {
                             let mut partial_buffer = String::new();
                             let mut buffer = [0; 8192];
@@ -60,9 +63,6 @@ impl TrackingClient for IFacialMocapTrackingClinet {
                                         {
                                             partial_buffer.push_str(&raw_data);
 
-                                            let re =
-                                                Regex::new("___iFacialMocaptrackingStatus-[01]\\|")
-                                                    .unwrap();
                                             let mut matches: Vec<_> =
                                                 re.find_iter(&partial_buffer).collect();
                                             while matches.len() >= 2 {
@@ -71,17 +71,15 @@ impl TrackingClient for IFacialMocapTrackingClinet {
 
                                                 let data_to_parse =
                                                     &partial_buffer[first_start..second_start];
-                                                match parse_tracking_string(&data_to_parse) {
-                                                    Ok(d) => {
-                                                        Self::send(&sender_clone, d);
+                                                if let Ok(d) = parse_tracking_string(data_to_parse)
+                                                {
+                                                    Self::send(&sender_clone, d);
 
-                                                        partial_buffer
-                                                            .replace_range(0..second_start, "");
-                                                        matches =
-                                                            re.find_iter(&partial_buffer).collect();
-                                                    }
-                                                    Err(_) => {}
-                                                };
+                                                    partial_buffer
+                                                        .replace_range(0..second_start, "");
+                                                    matches =
+                                                        re.find_iter(&partial_buffer).collect();
+                                                }
                                             }
                                         }
                                     }
@@ -136,7 +134,7 @@ fn parse_tracking_string(string: &str) -> Result<TrackingResponse, Box<dyn std::
         if !item.is_empty() {
             let kv: Vec<&str> = item.split('-').collect();
             if kv.len() == 2 {
-                let mut key = capitalize_first_letter(&kv[0].to_string());
+                let mut key = capitalize_first_letter(kv[0]);
                 if !key.eq("___iFacialMocaptrackingStatus-0") && key.contains("_") {
                     let end_index = key.len();
                     let start_index = end_index - 2;
@@ -157,9 +155,9 @@ fn parse_tracking_string(string: &str) -> Result<TrackingResponse, Box<dyn std::
     let coords_parts: Vec<&str> = coords_part.trim().split('|').collect();
 
     let (_, head_values) = get_coordinate_values(
-        *(coords_parts
-            .get(0)
-            .ok_or("Missing coordinates for \"head\"")?),
+        coords_parts
+            .first()
+            .ok_or("Missing coordinates for \"head\"")?,
     )?;
     let head_rotation = Cords {
         // I really don't understand why that thing reverted
@@ -175,14 +173,14 @@ fn parse_tracking_string(string: &str) -> Result<TrackingResponse, Box<dyn std::
 
     // Useless thing for now
     let (_, right_eye_values) = get_coordinate_values(
-        *(coords_parts
+        coords_parts
             .get(1)
-            .ok_or("Missing coordinates for \"rightEye\"")?),
+            .ok_or("Missing coordinates for \"rightEye\"")?,
     )?;
     let (_, left_eye_values) = get_coordinate_values(
-        *(coords_parts
+        coords_parts
             .get(2)
-            .ok_or("Missing coordinates for \"leftEye\"")?),
+            .ok_or("Missing coordinates for \"leftEye\"")?,
     )?;
     let left_eye = Cords {
         x: left_eye_values[0],

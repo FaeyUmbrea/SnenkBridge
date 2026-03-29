@@ -24,6 +24,8 @@ use crate::{
     vts::{requests, responses},
 };
 
+type PrecalcCfg = (Vec<(String, String, Node)>, HashSet<u64>, VecDeque<Message>);
+
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct VTSApiResponse<T> {
@@ -78,15 +80,14 @@ impl VTubeStudioPlugin {
         config_reload_delay: u64,
         face_search_timeout: u64,
     ) -> Self {
-        let this = Self {
+        Self {
             receiver,
             transformation_cfg_path,
             config_reload_interval: Duration::from_millis(config_reload_delay),
             face_search_timeout,
             last_context: LazyLock::new(|| Mutex::new(HashMapContext::new())),
             last_context_timestamp: LazyLock::new(|| Mutex::new(0)),
-        };
-        return this;
+        }
     }
 
     pub fn run(&self, active: Arc<AtomicBool>) {
@@ -190,20 +191,18 @@ impl VTubeStudioPlugin {
                             break; // Reconnect
                         }
                     }
-                } else {
-                    let tracking_data = self.tracking_msg(&precalc_funcs, &used_timestamps);
-
-                    if tracking_data.is_some() {
-                        match websocket.send(tracking_data.unwrap()) {
-                            Ok(_) => {}
-                            Err(error) => {
-                                warn!("Unable to send tracking msg: {}", error);
-                                break; // Reconnect
-                            }
+                } else if let Some(tracking_data) =
+                    self.tracking_msg(&precalc_funcs, &used_timestamps)
+                {
+                    match websocket.send(tracking_data) {
+                        Ok(_) => {}
+                        Err(error) => {
+                            warn!("Unable to send tracking msg: {}", error);
+                            break; // Reconnect
                         }
-                    } else {
-                        continue;
                     }
+                } else {
+                    continue;
                 }
             }
 
@@ -325,7 +324,7 @@ impl VTubeStudioPlugin {
             2.0 - (milliseconds / half_cycle)
         };
 
-        return (ping_pong, wave);
+        (ping_pong, wave)
     }
 
     fn insert_cyclic_info(&self, context: &mut HashMapContext, used_timestamps: &HashSet<u64>) {
@@ -575,13 +574,7 @@ impl VTubeStudioPlugin {
             .collect()
     }
 
-    fn precalc_cfg(
-        &self,
-    ) -> (
-        Vec<(String, String, evalexpr::Node)>,
-        HashSet<u64>,
-        VecDeque<Message>,
-    ) {
+    fn precalc_cfg(&self) -> PrecalcCfg {
         info!(
             "Loadling tranformation config: {}",
             &self.transformation_cfg_path
