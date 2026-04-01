@@ -61,16 +61,13 @@ impl TrackingClient for VTubeStudioTrackingClient {
                     }
                 }
 
-                match socket.recv_from(&mut buf) {
-                    Ok((amt, _src)) => {
-                        match serde_json::from_slice::<TrackingResponse>(&buf[..amt]) {
-                            Ok(data) => Self::send(&sender, data),
-                            Err(error) => {
-                                warn!("Unable to deserialize: {}", error)
-                            }
+                if let Ok((amt, _src)) = socket.recv_from(&mut buf) {
+                    match serde_json::from_slice::<TrackingResponse>(&buf[..amt]) {
+                        Ok(data) => Self::send(&sender, data),
+                        Err(error) => {
+                            warn!("Unable to deserialize: {}", error)
                         }
                     }
-                    Err(_) => {} // timeout, just loop
                 }
             }
             break;

@@ -22,6 +22,8 @@ pub struct IFacialMocapTrackingClinet;
 
 impl TrackingClient for IFacialMocapTrackingClinet {
     fn run(ip: String, sender: Sender<TrackingResponse>, active: Arc<AtomicBool>) {
+        let re = Regex::new("___iFacialMocaptrackingStatus-[01]\\|").unwrap();
+
         while active.load(Ordering::Relaxed) {
             // UDP discovery
             let ip_clone = ip.clone();
@@ -64,8 +66,6 @@ impl TrackingClient for IFacialMocapTrackingClinet {
             };
             let _ = listener.set_nonblocking(true);
             info!("iFacialMocap TCP server listening on {}", address);
-
-            let re = Regex::new("___iFacialMocaptrackingStatus-[01]\\|").unwrap();
 
             while active.load(Ordering::Relaxed) {
                 match listener.accept() {

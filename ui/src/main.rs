@@ -49,10 +49,18 @@ struct Settings {
     vts_port: String,
 }
 
-fn default_ip() -> String { "127.0.0.1".into() }
-fn default_timeout() -> String { "3000".into() }
-fn default_vts_ip() -> String { "localhost".into() }
-fn default_vts_port() -> String { "8001".into() }
+fn default_ip() -> String {
+    "127.0.0.1".into()
+}
+fn default_timeout() -> String {
+    "3000".into()
+}
+fn default_vts_ip() -> String {
+    "localhost".into()
+}
+fn default_vts_port() -> String {
+    "8001".into()
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -141,8 +149,7 @@ fn main() {
     // Source writes TrackingResponse into plugin_tx; target reads from plugin_rx.
     // These are wrapped in Arc<Mutex<Option<...>>> so they can be swapped out
     // each time source/target reconnects.
-    let plugin_tx: Arc<Mutex<Option<Sender<TrackingResponse>>>> =
-        Arc::new(Mutex::new(None));
+    let plugin_tx: Arc<Mutex<Option<Sender<TrackingResponse>>>> = Arc::new(Mutex::new(None));
     let plugin_rx: Arc<Mutex<Option<std::sync::mpsc::Receiver<TrackingResponse>>>> =
         Arc::new(Mutex::new(None));
 
@@ -225,11 +232,10 @@ fn main() {
 
             // Tracking thread
             rt_handle.spawn_blocking(move || {
-                let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>);
-                match tracking_type {
-                    TrackingClientType::VTubeStudio => function = VTubeStudioTrackingClient::run,
-                    TrackingClientType::IFacialMocap => function = IFacialMocapTrackingClinet::run,
-                }
+                let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match tracking_type {
+                    TrackingClientType::VTubeStudio => VTubeStudioTrackingClient::run,
+                    TrackingClientType::IFacialMocap => IFacialMocapTrackingClinet::run,
+                };
                 function(phone_ip, tracking_tx, flag_tracking);
             });
 
@@ -286,7 +292,7 @@ fn main() {
             target_active.store(true, Ordering::Relaxed);
             ui.set_target_active(true);
 
-            let face_search_timeout = timeout_ms(&ui.get_face_search_timeout().to_string());
+            let face_search_timeout = timeout_ms(ui.get_face_search_timeout().as_ref());
             let vts_ip = ui.get_vts_ip().to_string();
             let vts_port = ui.get_vts_port().to_string();
 
@@ -371,11 +377,12 @@ fn main() {
                         src_had.store(false, Ordering::Relaxed);
                     }
 
-                    if tgt_on && tgt_tick_count >= 2 {
-                        if ui.get_target_status().as_str() == "Connecting..." {
-                            ui.set_target_status("Connected".into());
-                            ui.set_target_status_color(color(COLOR_GREEN));
-                        }
+                    if tgt_on
+                        && tgt_tick_count >= 2
+                        && ui.get_target_status().as_str() == "Connecting..."
+                    {
+                        ui.set_target_status("Connected".into());
+                        ui.set_target_status_color(color(COLOR_GREEN));
                     }
                 });
 

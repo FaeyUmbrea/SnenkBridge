@@ -24,13 +24,7 @@ case "$OS" in
         cp "$SCRIPT_DIR/target/release/snenk_bridge" "$MACOS_DIR/snenk_bridge"
         cp "$SCRIPT_DIR/target/release/snenk_bridge_ui" "$MACOS_DIR/snenk_bridge_ui"
 
-        # Copy icon if available
-        if [ -f "$SCRIPT_DIR/ui/resources/bridge.icns" ]; then
-            cp "$SCRIPT_DIR/ui/resources/bridge.icns" "$RESOURCES/bridge.icns"
-            ICON_ENTRY="<key>CFBundleIconFile</key><string>bridge</string>"
-        else
-            ICON_ENTRY=""
-        fi
+        ICON_ENTRY=""
 
         # Create Info.plist
         cat > "$CONTENTS/Info.plist" <<PLIST

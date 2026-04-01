@@ -89,11 +89,10 @@ fn main() {
         .run(active_flag);
     });
 
-    let function: fn(ip: String, sender: Sender<TrackingResponse>, active: Arc<AtomicBool>);
-    match args.tracking_client {
-        TrackingClientType::VTubeStudio => function = VTubeStudioTrackingClient::run,
-        TrackingClientType::IFacialMocap => function = IFacialMocapTrackingClinet::run,
-    }
+    let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match args.tracking_client {
+        TrackingClientType::VTubeStudio => VTubeStudioTrackingClient::run,
+        TrackingClientType::IFacialMocap => IFacialMocapTrackingClinet::run,
+    };
     let phonetr_handler = thread::spawn(move || function(args.phone_ip, sender, active_flag_clone));
 
     let _ = pctr_handler.join();
