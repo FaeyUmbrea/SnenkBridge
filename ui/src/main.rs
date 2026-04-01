@@ -145,13 +145,9 @@ fn main() {
     let target_active = Arc::new(AtomicBool::new(false));
     let packet_count = Arc::new(AtomicUsize::new(0));
 
-    // Shared channel endpoints for the bridge between source and target.
-    // Source writes TrackingResponse into plugin_tx; target reads from plugin_rx.
-    // These are wrapped in Arc<Mutex<Option<...>>> so they can be swapped out
-    // each time source/target reconnects.
+    // Shared sender for the bridge. Target creates plugin channels and stores
+    // the sender here; the source bridge forwards tracking data through it.
     let plugin_tx: Arc<Mutex<Option<Sender<TrackingResponse>>>> = Arc::new(Mutex::new(None));
-    let plugin_rx: Arc<Mutex<Option<std::sync::mpsc::Receiver<TrackingResponse>>>> =
-        Arc::new(Mutex::new(None));
 
     // Settings changed → persist
     {
@@ -192,7 +188,6 @@ fn main() {
         let source_active = Arc::clone(&source_active);
         let packet_count = Arc::clone(&packet_count);
         let plugin_tx = Arc::clone(&plugin_tx);
-        let plugin_rx = Arc::clone(&plugin_rx);
         let rt_handle = rt.handle().clone();
 
         app.on_toggle_source(move || {
@@ -201,8 +196,6 @@ fn main() {
             if source_active.load(Ordering::Relaxed) {
                 source_active.store(false, Ordering::Relaxed);
                 packet_count.store(0, Ordering::Relaxed);
-                // Drop the old plugin channel so target knows source stopped
-                *plugin_tx.lock().unwrap() = None;
                 ui.set_source_active(false);
                 ui.set_source_status("Disconnected".into());
                 ui.set_source_status_color(color(COLOR_RED));
@@ -218,11 +211,6 @@ fn main() {
 
             let phone_ip = ui.get_phone_ip().to_string();
             let tracking_type = tracking_client_type(ui.get_tracking_type_index());
-
-            // Create fresh channels
-            let (tx, rx) = mpsc::channel::<TrackingResponse>();
-            *plugin_tx.lock().unwrap() = Some(tx);
-            *plugin_rx.lock().unwrap() = Some(rx);
 
             let (tracking_tx, tracking_rx) = mpsc::channel::<TrackingResponse>();
             let flag_tracking = Arc::clone(&source_active);
@@ -266,7 +254,7 @@ fn main() {
     {
         let weak = app.as_weak();
         let target_active = Arc::clone(&target_active);
-        let plugin_rx = Arc::clone(&plugin_rx);
+        let plugin_tx = Arc::clone(&plugin_tx);
         let rt_handle = rt.handle().clone();
 
         app.on_toggle_target(move || {
@@ -274,6 +262,7 @@ fn main() {
 
             if target_active.load(Ordering::Relaxed) {
                 target_active.store(false, Ordering::Relaxed);
+                *plugin_tx.lock().unwrap() = None;
                 ui.set_target_active(false);
                 ui.set_target_status("Disconnected".into());
                 ui.set_target_status_color(color(COLOR_RED));
@@ -296,12 +285,9 @@ fn main() {
             let vts_ip = ui.get_vts_ip().to_string();
             let vts_port = ui.get_vts_port().to_string();
 
-            // Take the plugin_rx if source already created one; otherwise create a dummy channel
-            let rx = plugin_rx.lock().unwrap().take();
-            let receiver = rx.unwrap_or_else(|| {
-                let (_tx, rx) = mpsc::channel();
-                rx
-            });
+            // Create fresh plugin channels — bridge will pick up the new sender
+            let (tx, receiver) = mpsc::channel::<TrackingResponse>();
+            *plugin_tx.lock().unwrap() = Some(tx);
 
             let flag = Arc::clone(&target_active);
 
