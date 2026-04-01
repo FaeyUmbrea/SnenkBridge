@@ -15,48 +15,71 @@ use std::{
     thread, time,
 };
 
+use log::{info, warn};
+
 #[derive(Clone)]
 pub struct IFacialMocapTrackingClinet;
 
 impl TrackingClient for IFacialMocapTrackingClinet {
     fn run(ip: String, sender: Sender<TrackingResponse>, active: Arc<AtomicBool>) {
-        // UDP connection
-        let udp_thread = thread::spawn(move || {
-            let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-            let _ = socket.set_read_timeout(Some(time::Duration::new(2, 0)));
-            let message = "iFacialMocap_UDPTCP_sahuasouryya9218sauhuiayeta91555dy3719";
+        while active.load(Ordering::Relaxed) {
+            // UDP discovery
+            let ip_clone = ip.clone();
+            let udp_result = thread::spawn(move || -> Result<(), String> {
+                let socket = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+                let _ = socket.set_read_timeout(Some(time::Duration::new(2, 0)));
+                let message = "iFacialMocap_UDPTCP_sahuasouryya9218sauhuiayeta91555dy3719";
+                let destination_address = format!("{}:{}", ip_clone, 49983);
+                socket
+                    .send_to(message.as_bytes(), &destination_address)
+                    .map_err(|e| format!("Failed to send UDP message: {}", e))?;
+                info!("iFacialMocap UDP discovery sent to {}", destination_address);
+                Ok(())
+            })
+            .join();
 
-            let destination_address = format!("{}:{}", ip, 49983);
-            socket
-                .send_to(message.as_bytes(), &destination_address)
-                .expect("Failed to send UDP message");
-            println!("UDP message sent to {}", destination_address);
-        });
-        udp_thread.join().expect("UDP thread panicked");
+            match udp_result {
+                Ok(Err(e)) => {
+                    warn!("iFacialMocap UDP discovery failed: {}, retrying...", e);
+                    thread::sleep(time::Duration::from_secs(3));
+                    continue;
+                }
+                Err(_) => {
+                    warn!("iFacialMocap UDP thread panicked, retrying...");
+                    thread::sleep(time::Duration::from_secs(3));
+                    continue;
+                }
+                Ok(Ok(())) => {}
+            }
 
-        // TCP Server
-        let tcp_server_thread = thread::spawn(move || {
-            let address = format!("{}:{}", "0.0.0.0", 49986);
-            let listener = TcpListener::bind(&address).unwrap();
-            println!("TCP server listening on {address}");
+            // TCP Server
+            let address = format!("0.0.0.0:{}", 49986);
+            let listener = match TcpListener::bind(&address) {
+                Ok(l) => l,
+                Err(e) => {
+                    warn!("Failed to bind TCP listener on {}: {}, retrying...", address, e);
+                    thread::sleep(time::Duration::from_secs(3));
+                    continue;
+                }
+            };
+            let _ = listener.set_nonblocking(true);
+            info!("iFacialMocap TCP server listening on {}", address);
 
             let re = Regex::new("___iFacialMocaptrackingStatus-[01]\\|").unwrap();
 
-            for stream in listener.incoming() {
-                if !active.load(Ordering::Relaxed) {
-                    return;
-                }
-
-                match stream {
-                    Ok(mut stream) => {
+            while active.load(Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((mut stream, _addr)) => {
                         let sender_clone = sender.clone();
                         let re = re.clone();
+                        let active_clone = Arc::clone(&active);
                         thread::spawn(move || {
                             let mut partial_buffer = String::new();
                             let mut buffer = [0; 8192];
 
-                            loop {
+                            while active_clone.load(Ordering::Relaxed) {
                                 match &stream.read(&mut buffer) {
+                                    Ok(0) => break,
                                     Ok(n) => {
                                         if let Ok(raw_data) =
                                             String::from_utf8(buffer[..*n].to_vec())
@@ -71,7 +94,8 @@ impl TrackingClient for IFacialMocapTrackingClinet {
 
                                                 let data_to_parse =
                                                     &partial_buffer[first_start..second_start];
-                                                if let Ok(d) = parse_tracking_string(data_to_parse)
+                                                if let Ok(d) =
+                                                    parse_tracking_string(data_to_parse)
                                                 {
                                                     Self::send(&sender_clone, d);
 
@@ -84,20 +108,23 @@ impl TrackingClient for IFacialMocapTrackingClinet {
                                         }
                                     }
                                     Err(e) => {
-                                        eprintln!("Failed to read from socket; err = {:?}", e);
+                                        warn!("Failed to read from socket: {:?}", e);
                                         break;
                                     }
                                 }
                             }
                         });
                     }
-                    Err(e) => eprintln!("Failed to accept connection; err = {:?}", e),
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(time::Duration::from_millis(100));
+                    }
+                    Err(e) => {
+                        warn!("Failed to accept connection: {:?}", e);
+                    }
                 }
             }
-        });
-        tcp_server_thread
-            .join()
-            .expect("TCP server thread panicked");
+            break;
+        }
     }
 }
 
@@ -188,7 +215,11 @@ fn parse_tracking_string(string: &str) -> Result<TrackingResponse, Box<dyn std::
         z: left_eye_values[2],
     };
 
-    let face_found = status_map["___iFacialMocaptrackingStatus"] == 1;
+    let face_found = status_map
+        .get("___iFacialMocaptrackingStatus")
+        .copied()
+        .unwrap_or(0)
+        == 1;
 
     let mut blend_shapes: Vec<Shape> = status_map
         .iter()

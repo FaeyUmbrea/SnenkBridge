@@ -64,6 +64,8 @@ pub struct VTubeStudioPlugin {
     transformation_cfg_path: String,
     config_reload_interval: Duration,
     face_search_timeout: u64,
+    vts_ip: String,
+    vts_port: String,
 
     last_context: LazyLock<Mutex<HashMapContext>>,
     last_context_timestamp: LazyLock<Mutex<u64>>,
@@ -79,12 +81,16 @@ impl VTubeStudioPlugin {
         transformation_cfg_path: String,
         config_reload_delay: u64,
         face_search_timeout: u64,
+        vts_ip: String,
+        vts_port: String,
     ) -> Self {
         Self {
             receiver,
             transformation_cfg_path,
             config_reload_interval: Duration::from_millis(config_reload_delay),
             face_search_timeout,
+            vts_ip,
+            vts_port,
             last_context: LazyLock::new(|| Mutex::new(HashMapContext::new())),
             last_context_timestamp: LazyLock::new(|| Mutex::new(0)),
         }
@@ -94,27 +100,35 @@ impl VTubeStudioPlugin {
         while active.load(Ordering::Relaxed) {
             let flag = Arc::clone(&active);
 
-            let websocket = VTubeStudioPlugin::connect();
-            self.msg_loop(websocket, flag);
+            match self.connect(&active) {
+                Some(websocket) => self.msg_loop(websocket, flag),
+                None => break,
+            }
         }
     }
 
-    fn connect() -> WebSocket<MaybeTlsStream<TcpStream>> {
-        let mut port = "8001".to_string();
+    fn connect(&self, active: &Arc<AtomicBool>) -> Option<WebSocket<MaybeTlsStream<TcpStream>>> {
+        let mut port = self.vts_port.clone();
+        let ip = &self.vts_ip;
         loop {
-            match tungstenite::connect(format!("ws://localhost:{}", port)) {
-                Ok((websocket, _responce)) => {
-                    info!("Connected to local port:{}", port);
-                    return websocket;
+            if !active.load(Ordering::Relaxed) {
+                return None;
+            }
+
+            match tungstenite::connect(format!("ws://{}:{}", ip, port)) {
+                Ok((websocket, _response)) => {
+                    info!("Connected to VTS at {}:{}", ip, port);
+                    return Some(websocket);
                 }
                 Err(error) => {
-                    warn!("{}", error);
+                    warn!("VTS connection failed: {}", error);
                     match VTubeStudioPlugin::discover_port() {
                         Ok(prt) => {
                             port = prt;
                         }
                         Err(e) => {
-                            warn!("{}", e);
+                            warn!("VTS discovery failed: {}", e);
+                            std::thread::sleep(Duration::from_secs(2));
                             continue;
                         }
                     }
@@ -209,16 +223,33 @@ impl VTubeStudioPlugin {
             match websocket.read() {
                 Ok(msg) => {
                     if msg.is_text() {
-                        let msg_value =
-                            serde_json::from_str::<Value>(msg.to_text().unwrap()).unwrap();
+                        let msg_text = match msg.to_text() {
+                            Ok(t) => t,
+                            Err(e) => {
+                                warn!("Non-text message: {}", e);
+                                continue;
+                            }
+                        };
+                        let msg_value = match serde_json::from_str::<Value>(msg_text) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                warn!("Invalid JSON from VTS: {}", e);
+                                continue;
+                            }
+                        };
 
                         match msg_value["messageType"].as_str() {
                             Some(msg_type) => match msg_type {
                                 "APIError" => {
-                                    let err_data = serde_json::from_value::<
+                                    let err_data = match serde_json::from_value::<
                                         VTSApiResponse<responses::APIError>,
-                                    >(msg_value)
-                                    .unwrap();
+                                    >(msg_value) {
+                                        Ok(d) => d,
+                                        Err(e) => {
+                                            warn!("Failed to parse API error: {}", e);
+                                            continue;
+                                        }
+                                    };
                                     // warn!("API error: {:?}", err_data.data);
                                     match err_data.data.error_id {
                                         8 => {
@@ -246,22 +277,30 @@ impl VTubeStudioPlugin {
                                     }
                                 }
                                 "APIStateResponse" => {
-                                    let state_data =
-                                        serde_json::from_value::<
-                                            VTSApiResponse<responses::APIStateResponse>,
-                                        >(msg_value)
-                                        .unwrap();
+                                    let state_data = match serde_json::from_value::<
+                                        VTSApiResponse<responses::APIStateResponse>,
+                                    >(msg_value) {
+                                        Ok(d) => d,
+                                        Err(e) => {
+                                            warn!("Failed to parse state response: {}", e);
+                                            continue;
+                                        }
+                                    };
                                     msg_buffer.pop_front();
                                     if !state_data.data.current_session_authenticated {
                                         msg_buffer.push_front(VTubeStudioPlugin::auth(&token));
                                     }
                                 }
                                 "AuthenticationTokenResponse" => {
-                                    let token_data =
-                                        serde_json::from_value::<
-                                            VTSApiResponse<responses::AuthenticationToken>,
-                                        >(msg_value)
-                                        .unwrap();
+                                    let token_data = match serde_json::from_value::<
+                                        VTSApiResponse<responses::AuthenticationToken>,
+                                    >(msg_value) {
+                                        Ok(d) => d,
+                                        Err(e) => {
+                                            warn!("Failed to parse token response: {}", e);
+                                            continue;
+                                        }
+                                    };
 
                                     let _ =
                                         fs::write("token", &token_data.data.authentication_token)
@@ -272,10 +311,15 @@ impl VTubeStudioPlugin {
                                     msg_buffer.push_front(VTubeStudioPlugin::auth(&token));
                                 }
                                 "AuthenticationResponse" => {
-                                    let auth_data = serde_json::from_value::<
+                                    let auth_data = match serde_json::from_value::<
                                         VTSApiResponse<responses::AuthenticationResponse>,
-                                    >(msg_value)
-                                    .unwrap();
+                                    >(msg_value) {
+                                        Ok(d) => d,
+                                        Err(e) => {
+                                            warn!("Failed to parse auth response: {}", e);
+                                            continue;
+                                        }
+                                    };
                                     msg_buffer.pop_front();
                                     if !auth_data.data.authenticated {
                                         token = None;
@@ -663,10 +707,10 @@ impl VTubeStudioPlugin {
                 Ok(calc) => calc,
                 Err(error) => {
                     error!(
-                        "Unable to read cfg (probably error or typo in function): {}",
-                        error
+                        "Skipping parameter '{}': invalid expression '{}': {}",
+                        name, func.func, error
                     );
-                    panic!()
+                    continue;
                 }
             };
 

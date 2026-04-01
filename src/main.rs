@@ -56,6 +56,10 @@ struct Args {
         help = "Optional delay for config reloading in milliseconds. Default: 0 (disabled)"
     )]
     config_reload_delay: u64,
+    #[arg(long, default_value = "localhost", help = "VTube Studio IP address")]
+    vts_ip: String,
+    #[arg(long, default_value = "8001", help = "VTube Studio API port")]
+    vts_port: String,
 }
 
 fn main() {
@@ -79,6 +83,8 @@ fn main() {
             args.config,
             args.config_reload_delay,
             args.face_search_timeout,
+            args.vts_ip,
+            args.vts_port,
         )
         .run(active_flag);
     });
