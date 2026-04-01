@@ -37,7 +37,7 @@ case "$OS" in
     <key>CFBundleDisplayName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key>
-    <string>com.an1by.snenkbridge</string>
+    <string>com.faeyumbrea.snenkbridge</string>
     <key>CFBundleVersion</key>
     <string>0.3.0</string>
     <key>CFBundleShortVersionString</key>

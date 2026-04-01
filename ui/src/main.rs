@@ -394,4 +394,11 @@ fn main() {
     }
 
     app.run().unwrap();
+
+    // Signal all background tasks to stop on window close
+    source_active.store(false, Ordering::Relaxed);
+    target_active.store(false, Ordering::Relaxed);
+
+    // Drop the runtime, which waits for blocking tasks to finish
+    drop(rt);
 }

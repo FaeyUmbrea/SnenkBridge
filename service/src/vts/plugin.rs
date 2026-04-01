@@ -169,7 +169,14 @@ impl VTubeStudioPlugin {
         active: Arc<AtomicBool>,
     ) {
         let mut msg_buffer: VecDeque<Message> = VecDeque::new();
-        let mut token: Option<String> = fs::read_to_string("token").ok();
+        let token_path = if let Some(dir) = dirs::config_dir() {
+            let app_dir = dir.join("SnenkBridge");
+            let _ = fs::create_dir_all(&app_dir);
+            app_dir.join("token")
+        } else {
+            std::path::PathBuf::from("token")
+        };
+        let mut token: Option<String> = fs::read_to_string(&token_path).ok();
 
         let vts_status = VTubeStudioPlugin::req_status_msg();
         let (mut precalc_funcs, mut used_timestamps, mut new_params) = self.precalc_cfg();
@@ -303,7 +310,7 @@ impl VTubeStudioPlugin {
                                     };
 
                                     let _ =
-                                        fs::write("token", &token_data.data.authentication_token)
+                                        fs::write(&token_path, &token_data.data.authentication_token)
                                             .map_err(|e| error!("Unable to save token: {:?}", e));
                                     token = Some(token_data.data.authentication_token);
                                     info!("Recived Token from VtubeStudio");
@@ -323,7 +330,7 @@ impl VTubeStudioPlugin {
                                     msg_buffer.pop_front();
                                     if !auth_data.data.authenticated {
                                         token = None;
-                                        let _ = fs::remove_file("token")
+                                        let _ = fs::remove_file(&token_path)
                                             .map_err(|e| error!("Unable to delete token: {:?}", e));
                                         info!("Invalid Token, Requesting new...");
                                         msg_buffer.push_back(VTubeStudioPlugin::auth(&token));
@@ -572,7 +579,7 @@ impl VTubeStudioPlugin {
 
             let auth_token = requests::Auth {
                 plugin_name: "SnenkBridge",
-                plugin_developer: "An1by",
+                plugin_developer: "FaeyUmbrea",
                 authentication_token: tk.as_str(),
             };
 
@@ -592,7 +599,7 @@ impl VTubeStudioPlugin {
 
         let auth_data = requests::AuthToken {
             plugin_name: "SnenkBridge",
-            plugin_developer: "An1by",
+            plugin_developer: "FaeyUmbrea",
             plugin_icon: None,
         };
 

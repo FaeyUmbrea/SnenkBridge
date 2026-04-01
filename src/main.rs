@@ -65,7 +65,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    println!("Github: https://github.com/an1by/SnenkBridge");
+    println!("Github: https://github.com/FaeyUmbrea/SnenkBridge");
 
     let active_flag = Arc::new(AtomicBool::new(true));
     let active_flag_clone = Arc::clone(&active_flag);

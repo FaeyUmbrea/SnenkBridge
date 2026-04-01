@@ -3,7 +3,7 @@
     <assemblyIdentity
         version="0.0.1.0"
         processorArchitecture="*"
-        name="An1by.SnenkBridgeUI"
+        name="FaeyUmbrea.SnenkBridgeUI"
         type="win32"
     />
     <dependency>
