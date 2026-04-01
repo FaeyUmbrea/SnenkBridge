@@ -2,7 +2,7 @@ name: Build and Upload Release Artifacts
 
 on:
   release:
-    types: [created]
+    types: [published]
 
 permissions:
   contents: write
