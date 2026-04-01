@@ -10,3 +10,7 @@
 
 - 0.3.0
 - *(deps)* Bump bytes in the cargo group across 1 directory
+
+### 📚 Documentation
+
+- Update CHANGELOG.md
