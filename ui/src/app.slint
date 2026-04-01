@@ -1,0 +1,248 @@
+// SnenkBridge UI — dark theme
+import { ComboBox } from "std-widgets.slint";
+
+component StyledLineEdit inherits Rectangle {
+    in property<string> placeholder;
+    in-out property<string> text <=> input.text;
+    in property<bool> enabled: true;
+
+    callback edited(string);
+
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #4a4a6a;
+    background: #1e1e2e;
+    height: 38px;
+
+    input := TextInput {
+        x: 10px;
+        y: 0;
+        width: parent.width - 20px;
+        height: parent.height;
+        vertical-alignment: center;
+        color: root.enabled ? #d4d4e8 : #6a6a8a;
+        font-size: 14px;
+        enabled: root.enabled;
+        edited => { root.edited(self.text); }
+    }
+
+    // Placeholder text
+    if input.text == "" : Text {
+        x: 10px;
+        vertical-alignment: center;
+        color: #6a6a8a;
+        font-size: 14px;
+        text: root.placeholder;
+    }
+}
+
+component StyledButton inherits Rectangle {
+    in property<string> label;
+    in property<bool> enabled: true;
+    in property<color> base-bg: #4a4a7a;
+    in property<color> hover-bg: #5c5c90;
+    in property<color> base-border: #6c6cb5;
+    in property<color> hover-border: #8888cc;
+    in property<color> text-color: #d4d4e8;
+
+    callback clicked;
+
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: touch.has-hover && root.enabled ? root.hover-border : root.base-border;
+    background: touch.has-hover && root.enabled ? root.hover-bg : root.base-bg;
+    height: 38px;
+    opacity: root.enabled ? 1.0 : 0.5;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.label;
+        color: root.text-color;
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component StyledComboBox inherits Rectangle {
+    in property<[string]> model;
+    in-out property<int> current-index;
+    in property<bool> enabled: true;
+
+    callback selected(int);
+
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #4a4a6a;
+    background: #1e1e2e;
+    height: 38px;
+    width: 180px;
+
+    combo := ComboBox {
+        width: 100%;
+        height: 100%;
+        model: root.model;
+        current-index <=> root.current-index;
+        enabled: root.enabled;
+        selected(val) => { root.selected(self.current-index); }
+    }
+}
+
+export component App inherits Window {
+    title: "SnenkBridge";
+    min-width: 520px;
+    min-height: 280px;
+    preferred-width: 520px;
+    preferred-height: 280px;
+    background: #2b2b3d;
+
+    // ── Properties ──
+    in-out property<string> transform-path;
+    in-out property<string> ip: "127.0.0.1";
+    in-out property<int> tracking-type-index: 0;
+    in-out property<string> face-search-timeout: "3000";
+    in-out property<bool> active: false;
+    in-out property<string> status-text: "Disconnected";
+    in-out property<color> status-color: #6a6a8a;
+    in-out property<string> error-text;
+
+    // ── Callbacks ──
+    callback browse-file();
+    callback toggle-connection();
+    callback settings-changed();
+
+    // Main panel
+    Rectangle {
+        background: #232335;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: #3a3a55;
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+
+            // Config file row
+            HorizontalLayout {
+                spacing: 8px;
+                StyledLineEdit {
+                    placeholder: "Path to config file...";
+                    text <=> root.transform-path;
+                    enabled: !root.active;
+                    horizontal-stretch: 1;
+                    edited(val) => { root.settings-changed(); }
+                }
+                StyledButton {
+                    label: "Browse";
+                    enabled: !root.active;
+                    width: 90px;
+                    clicked => { root.browse-file(); }
+                }
+            }
+
+            // IP row
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: center;
+                Text {
+                    text: "Phone IP";
+                    color: #9999bb;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                }
+                StyledLineEdit {
+                    placeholder: "192.168.1.71";
+                    text <=> root.ip;
+                    enabled: !root.active;
+                    horizontal-stretch: 1;
+                    edited(val) => { root.settings-changed(); }
+                }
+            }
+
+            // Tracking type + timeout row
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: center;
+                Text {
+                    text: "Tracking";
+                    color: #9999bb;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                }
+                StyledComboBox {
+                    model: ["VTubeStudio", "IFacialMocap"];
+                    current-index <=> root.tracking-type-index;
+                    enabled: !root.active;
+                    selected(idx) => { root.settings-changed(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Text {
+                    text: "Timeout";
+                    color: #9999bb;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                }
+                StyledLineEdit {
+                    placeholder: "3000";
+                    text <=> root.face-search-timeout;
+                    enabled: !root.active;
+                    width: 80px;
+                    edited(val) => { root.settings-changed(); }
+                }
+                Text {
+                    text: "ms";
+                    color: #6a6a8a;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Error display
+            if root.error-text != "" : Text {
+                text: root.error-text;
+                color: #e05a5a;
+                font-size: 13px;
+            }
+
+            // Spacer
+            Rectangle { vertical-stretch: 1; }
+
+            // Bottom bar
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: center;
+                Text {
+                    text: root.status-text;
+                    color: root.status-color;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if !root.active : StyledButton {
+                    label: "Connect";
+                    base-bg: #6c6cb5;
+                    hover-bg: #7e7ecc;
+                    base-border: #8888cc;
+                    hover-border: #9999dd;
+                    text-color: #ffffff;
+                    horizontal-stretch: 1;
+                    clicked => { root.toggle-connection(); }
+                }
+                if root.active : StyledButton {
+                    label: "Disconnect";
+                    base-bg: #8b3a3a;
+                    hover-bg: #a04545;
+                    base-border: #cc5555;
+                    hover-border: #dd6666;
+                    text-color: #ffffff;
+                    horizontal-stretch: 1;
+                    clicked => { root.toggle-connection(); }
+                }
+            }
+        }
+    }
+}
