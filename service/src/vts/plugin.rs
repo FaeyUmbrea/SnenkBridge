@@ -250,7 +250,9 @@ impl VTubeStudioPlugin {
                                 "APIError" => {
                                     let err_data = match serde_json::from_value::<
                                         VTSApiResponse<responses::APIError>,
-                                    >(msg_value) {
+                                    >(
+                                        msg_value
+                                    ) {
                                         Ok(d) => d,
                                         Err(e) => {
                                             warn!("Failed to parse API error: {}", e);
@@ -286,7 +288,9 @@ impl VTubeStudioPlugin {
                                 "APIStateResponse" => {
                                     let state_data = match serde_json::from_value::<
                                         VTSApiResponse<responses::APIStateResponse>,
-                                    >(msg_value) {
+                                    >(
+                                        msg_value
+                                    ) {
                                         Ok(d) => d,
                                         Err(e) => {
                                             warn!("Failed to parse state response: {}", e);
@@ -301,7 +305,9 @@ impl VTubeStudioPlugin {
                                 "AuthenticationTokenResponse" => {
                                     let token_data = match serde_json::from_value::<
                                         VTSApiResponse<responses::AuthenticationToken>,
-                                    >(msg_value) {
+                                    >(
+                                        msg_value
+                                    ) {
                                         Ok(d) => d,
                                         Err(e) => {
                                             warn!("Failed to parse token response: {}", e);
@@ -309,9 +315,11 @@ impl VTubeStudioPlugin {
                                         }
                                     };
 
-                                    let _ =
-                                        fs::write(&token_path, &token_data.data.authentication_token)
-                                            .map_err(|e| error!("Unable to save token: {:?}", e));
+                                    let _ = fs::write(
+                                        &token_path,
+                                        &token_data.data.authentication_token,
+                                    )
+                                    .map_err(|e| error!("Unable to save token: {:?}", e));
                                     token = Some(token_data.data.authentication_token);
                                     info!("Recived Token from VtubeStudio");
                                     msg_buffer.pop_front();
@@ -320,7 +328,9 @@ impl VTubeStudioPlugin {
                                 "AuthenticationResponse" => {
                                     let auth_data = match serde_json::from_value::<
                                         VTSApiResponse<responses::AuthenticationResponse>,
-                                    >(msg_value) {
+                                    >(
+                                        msg_value
+                                    ) {
                                         Ok(d) => d,
                                         Err(e) => {
                                             warn!("Failed to parse auth response: {}", e);

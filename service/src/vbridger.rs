@@ -49,11 +49,10 @@ pub fn convert_vbridger_config(input: &str) -> Result<String, String> {
         .custom_param
         .into_iter()
         .filter(|p| p.send_flag == "true")
-        .map(|p| convert_param(p))
+        .map(convert_param)
         .collect();
 
-    serde_json::to_string_pretty(&calc_fns)
-        .map_err(|e| format!("Failed to serialize output: {e}"))
+    serde_json::to_string_pretty(&calc_fns).map_err(|e| format!("Failed to serialize output: {e}"))
 }
 
 fn convert_param(param: VBridgerParam) -> CalcFn {
@@ -252,7 +251,10 @@ fn rename_variables(expr: &str) -> String {
     let mapping = build_variable_mapping();
 
     // Sort by length descending to avoid partial replacements
-    let mut sorted: Vec<(&str, &str)> = mapping.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let mut sorted: Vec<(&str, &str)> = mapping
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     sorted.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
     let mut result = expr.to_string();
@@ -300,7 +302,10 @@ fn replace_identifier(input: &str, from: &str, to: &str) -> String {
 
 fn convert_variable_name(name: &str) -> String {
     let mapping = build_variable_mapping();
-    mapping.get(name).cloned().unwrap_or_else(|| name.to_string())
+    mapping
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| name.to_string())
 }
 
 fn build_variable_mapping() -> HashMap<String, String> {
@@ -498,7 +503,10 @@ stuff"#;
 
     #[test]
     fn test_simple_negation() {
-        assert_eq!(convert_simple_func("return headPosX * - 1"), "HeadPosX * - 1");
+        assert_eq!(
+            convert_simple_func("return headPosX * - 1"),
+            "HeadPosX * - 1"
+        );
     }
 
     #[test]
@@ -558,13 +566,8 @@ stuff"#;
 
     #[test]
     fn test_simple_mouth_funnel() {
-        let result = convert_simple_func(
-            "return (mouthFunnel * (1 - tongueOut)) - (jawOpen * .2)",
-        );
-        assert_eq!(
-            result,
-            "(MouthFunnel * (1 - TongueOut)) - (JawOpen * .2)"
-        );
+        let result = convert_simple_func("return (mouthFunnel * (1 - tongueOut)) - (jawOpen * .2)");
+        assert_eq!(result, "(MouthFunnel * (1 - TongueOut)) - (JawOpen * .2)");
     }
 
     #[test]
@@ -630,9 +633,8 @@ stuff"#;
 
     #[test]
     fn test_simple_body_angle_y_with_blink() {
-        let result = convert_simple_func(
-            "return ( headRotX * 1.5)  + ( (eyeBlink_L + eyeBlink_R) * - 1)",
-        );
+        let result =
+            convert_simple_func("return ( headRotX * 1.5)  + ( (eyeBlink_L + eyeBlink_R) * - 1)");
         assert_eq!(
             result,
             "( HeadRotX * 1.5)  + ( (EyeBlinkLeft + EyeBlinkRight) * - 1)"
@@ -953,7 +955,9 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
     #[test]
     fn test_convert_param_complex_uses_outrange() {
         let param = VBridgerParam {
-            func: "let result = headRotY\nlet inmin=-40.0, inmax=40;\nlet outmin=-30.0, outmax=30.0;".to_string(),
+            func:
+                "let result = headRotY\nlet inmin=-40.0, inmax=40;\nlet outmin=-30.0, outmax=30.0;"
+                    .to_string(),
             max: 40.0,
             min: -40.0,
             default: 0.0,
@@ -1094,7 +1098,10 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
     #[test]
     fn test_multiple_math_functions() {
         let result = convert_simple_func("return Math.min(Math.abs(headRotX), Math.abs(headRotY))");
-        assert_eq!(result, "math::min(math::abs(HeadRotX), math::abs(HeadRotY))");
+        assert_eq!(
+            result,
+            "math::min(math::abs(HeadRotX), math::abs(HeadRotY))"
+        );
     }
 
     // --- Edge cases ---
@@ -1149,7 +1156,10 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
         for key in mapping.keys() {
             if key.ends_with("_L") {
                 let right = key.replace("_L", "_R");
-                assert!(mapping.contains_key(&right), "Missing right counterpart for {key}");
+                assert!(
+                    mapping.contains_key(&right),
+                    "Missing right counterpart for {key}"
+                );
             }
         }
     }
@@ -1163,7 +1173,11 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
     #[test]
     fn test_all_head_variables() {
-        let result = rename_variables("headRotX + headRotY + headRotZ + headPosX + headPosY + headPosZ");
-        assert_eq!(result, "HeadRotX + HeadRotY + HeadRotZ + HeadPosX + HeadPosY + HeadPosZ");
+        let result =
+            rename_variables("headRotX + headRotY + headRotZ + headPosX + headPosY + headPosZ");
+        assert_eq!(
+            result,
+            "HeadRotX + HeadRotY + HeadRotZ + HeadPosX + HeadPosY + HeadPosZ"
+        );
     }
 }

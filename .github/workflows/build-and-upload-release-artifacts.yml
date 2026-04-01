@@ -19,29 +19,20 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: snenk-bridge-cli-linux
-            ext: ""
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: snenk-bridge-cli-macos
-            ext: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: snenk-bridge-cli-windows
-            ext: ".exe"
     steps:
       - uses: actions/checkout@v4
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-cli-${{ hashFiles('**/Cargo.lock') }}
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.target }}
       - name: Build CLI release
         run: cargo build --release --package snenk_bridge --target ${{ matrix.target }}
       - name: Package artifact (Unix)
@@ -60,26 +51,13 @@ jobs:
           cp "target/${{ matrix.target }}/release/snenk_bridge.exe" dist/snenk_bridge.exe
           cd dist
           7z a "${{ matrix.artifact }}-${TAG}.zip" snenk_bridge.exe
-      - name: Upload artifact (Unix)
-        if: runner.os != 'Windows'
-        uses: actions/upload-release-asset@v1
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.tar.gz
-          asset_name: ${{ matrix.artifact }}-${{ github.event.release.tag_name }}.tar.gz
-          asset_content_type: application/gzip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.zip
-          asset_name: ${{ matrix.artifact }}-${{ github.event.release.tag_name }}.zip
-          asset_content_type: application/zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.tar.gz
+            dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.zip
+          fail_on_unmatched_files: false
 
   build-ui:
     name: Build UI (${{ matrix.os }})
@@ -100,18 +78,12 @@ jobs:
             artifact: snenk-bridge-ui-windows
     steps:
       - uses: actions/checkout@v4
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-ui-${{ hashFiles('**/Cargo.lock') }}
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ui-${{ matrix.target }}
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -135,23 +107,10 @@ jobs:
           cp "target/${{ matrix.target }}/release/snenk_bridge_ui.exe" dist/snenk_bridge_ui.exe
           cd dist
           7z a "${{ matrix.artifact }}-${TAG}.zip" snenk_bridge_ui.exe
-      - name: Upload artifact (Unix)
-        if: runner.os != 'Windows'
-        uses: actions/upload-release-asset@v1
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.tar.gz
-          asset_name: ${{ matrix.artifact }}-${{ github.event.release.tag_name }}.tar.gz
-          asset_content_type: application/gzip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.zip
-          asset_name: ${{ matrix.artifact }}-${{ github.event.release.tag_name }}.zip
-          asset_content_type: application/zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.tar.gz
+            dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.zip
+          fail_on_unmatched_files: false

@@ -59,7 +59,10 @@ impl TrackingClient for IFacialMocapTrackingClinet {
             let listener = match TcpListener::bind(&address) {
                 Ok(l) => l,
                 Err(e) => {
-                    warn!("Failed to bind TCP listener on {}: {}, retrying...", address, e);
+                    warn!(
+                        "Failed to bind TCP listener on {}: {}, retrying...",
+                        address, e
+                    );
                     thread::sleep(time::Duration::from_secs(3));
                     continue;
                 }
@@ -94,8 +97,7 @@ impl TrackingClient for IFacialMocapTrackingClinet {
 
                                                 let data_to_parse =
                                                     &partial_buffer[first_start..second_start];
-                                                if let Ok(d) =
-                                                    parse_tracking_string(data_to_parse)
+                                                if let Ok(d) = parse_tracking_string(data_to_parse)
                                                 {
                                                     Self::send(&sender_clone, d);
 

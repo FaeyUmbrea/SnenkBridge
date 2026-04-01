@@ -220,10 +220,11 @@ fn main() {
 
             // Tracking thread
             rt_handle.spawn_blocking(move || {
-                let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match tracking_type {
-                    TrackingClientType::VTubeStudio => VTubeStudioTrackingClient::run,
-                    TrackingClientType::IFacialMocap => IFacialMocapTrackingClinet::run,
-                };
+                let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) =
+                    match tracking_type {
+                        TrackingClientType::VTubeStudio => VTubeStudioTrackingClient::run,
+                        TrackingClientType::IFacialMocap => IFacialMocapTrackingClinet::run,
+                    };
                 function(phone_ip, tracking_tx, flag_tracking);
             });
 

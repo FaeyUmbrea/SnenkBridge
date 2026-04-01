@@ -89,7 +89,8 @@ fn main() {
         .run(active_flag);
     });
 
-    let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match args.tracking_client {
+    let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match args.tracking_client
+    {
         TrackingClientType::VTubeStudio => VTubeStudioTrackingClient::run,
         TrackingClientType::IFacialMocap => IFacialMocapTrackingClinet::run,
     };
