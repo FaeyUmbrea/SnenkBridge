@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// VBridger input format
+/// Vitamins input format
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct VBridgerConfig {
+pub struct VitaminsConfig {
     pub version: String,
-    pub custom_param: Vec<VBridgerParam>,
+    pub custom_param: Vec<VitaminsParam>,
     pub author: String,
     pub description: String,
     pub save_name: String,
@@ -15,7 +15,7 @@ pub struct VBridgerConfig {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct VBridgerParam {
+pub struct VitaminsParam {
     pub func: String,
     pub max: f64,
     pub min: f64,
@@ -37,13 +37,13 @@ pub struct CalcFn {
     pub default_value: f64,
 }
 
-/// Converts a VBridger JSON config string into a SnenkBridge JSON config string.
+/// Converts a Vitamins JSON config string into a SnenkBridge JSON config string.
 ///
 /// Complex parameters (bezier easing, delay buffers) are simplified to their
 /// core expressions — the easing curves and stateful smoothing are discarded.
-pub fn convert_vbridger_config(input: &str) -> Result<String, String> {
-    let vb: VBridgerConfig =
-        serde_json::from_str(input).map_err(|e| format!("Failed to parse VBridger config: {e}"))?;
+pub fn convert_vitamins_config(input: &str) -> Result<String, String> {
+    let vb: VitaminsConfig =
+        serde_json::from_str(input).map_err(|e| format!("Failed to parse Vitamins config: {e}"))?;
 
     let calc_fns: Vec<CalcFn> = vb
         .custom_param
@@ -55,7 +55,7 @@ pub fn convert_vbridger_config(input: &str) -> Result<String, String> {
     serde_json::to_string_pretty(&calc_fns).map_err(|e| format!("Failed to serialize output: {e}"))
 }
 
-fn convert_param(param: VBridgerParam) -> CalcFn {
+fn convert_param(param: VitaminsParam) -> CalcFn {
     let name = param
         .param_name
         .strip_prefix("param_")
@@ -78,7 +78,7 @@ fn convert_param(param: VBridgerParam) -> CalcFn {
     }
 }
 
-/// Extracts the core expression from a complex VBridger function.
+/// Extracts the core expression from a complex Vitamins function.
 ///
 /// Complex functions follow one of two patterns:
 /// 1. Bezier curve: `let result = <expr>\n let inmin=...` — extract expr, use outmin/outmax
@@ -197,7 +197,7 @@ fn parse_range_line(line: &str, min_key: &str, max_key: &str) -> Option<(f64, f6
     }
 }
 
-/// Converts a simple VBridger expression to evalexpr syntax.
+/// Converts a simple Vitamins expression to evalexpr syntax.
 fn convert_simple_func(func: &str) -> String {
     let mut result = func.to_string();
 
@@ -246,7 +246,7 @@ fn find_comment_start(s: &str) -> Option<usize> {
     None
 }
 
-/// Renames VBridger tracking variable names to SnenkBridge conventions.
+/// Renames Vitamins tracking variable names to SnenkBridge conventions.
 fn rename_variables(expr: &str) -> String {
     let mapping = build_variable_mapping();
 
@@ -439,7 +439,7 @@ stuff"#;
 
     #[test]
     fn test_param_name_stripping() {
-        let param = VBridgerParam {
+        let param = VitaminsParam {
             func: "return headRotY".to_string(),
             max: 30.0,
             min: -30.0,
@@ -456,7 +456,7 @@ stuff"#;
     fn test_full_conversion() {
         let input = r#"{"version":"0.9.7","customParam":[{"func":"return headPosX * - 1","max":15,"min":-15,"default":0,"type":"simple","sendFlag":"true","paramName":"param_FacePositionX"},{"func":"return (eyeLookIn_L - .1) - eyeLookOut_L","max":1,"min":-1,"default":0,"type":"simple","sendFlag":"true","paramName":"param_EyeRightX"}],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
 
-        let output = convert_vbridger_config(input).unwrap();
+        let output = convert_vitamins_config(input).unwrap();
         let parsed: Vec<CalcFn> = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed.len(), 2);
@@ -920,7 +920,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
     #[test]
     fn test_convert_param_simple() {
-        let param = VBridgerParam {
+        let param = VitaminsParam {
             func: "return cheekPuff".to_string(),
             max: 1.0,
             min: 0.0,
@@ -939,7 +939,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
     #[test]
     fn test_convert_param_without_prefix() {
-        let param = VBridgerParam {
+        let param = VitaminsParam {
             func: "return jawOpen".to_string(),
             max: 1.0,
             min: 0.0,
@@ -954,7 +954,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
     #[test]
     fn test_convert_param_complex_uses_outrange() {
-        let param = VBridgerParam {
+        let param = VitaminsParam {
             func:
                 "let result = headRotY\nlet inmin=-40.0, inmax=40;\nlet outmin=-30.0, outmax=30.0;"
                     .to_string(),
@@ -974,7 +974,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
     #[test]
     fn test_convert_param_preserves_default() {
-        let param = VBridgerParam {
+        let param = VitaminsParam {
             func: "return jawOpen".to_string(),
             max: 1.0,
             min: 0.0,
@@ -987,7 +987,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
         assert_eq!(result.default_value, 0.5);
     }
 
-    // --- convert_vbridger_config ---
+    // --- convert_vitamins_config ---
 
     #[test]
     fn test_full_config_filters_send_flag() {
@@ -995,7 +995,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             {"func":"return jawOpen","max":1,"min":0,"default":0,"type":"simple","sendFlag":"true","paramName":"param_JawOpen"},
             {"func":"return jawOpen","max":1,"min":0,"default":0,"type":"simple","sendFlag":"false","paramName":"param_Hidden"}
         ],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
-        let output = convert_vbridger_config(input).unwrap();
+        let output = convert_vitamins_config(input).unwrap();
         let parsed: Vec<CalcFn> = serde_json::from_str(&output).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name, "JawOpen");
@@ -1003,7 +1003,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
     #[test]
     fn test_full_config_invalid_json() {
-        let result = convert_vbridger_config("not json");
+        let result = convert_vitamins_config("not json");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Failed to parse"));
     }
@@ -1011,7 +1011,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
     #[test]
     fn test_full_config_empty_params() {
         let input = r#"{"version":"0.9.7","customParam":[],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
-        let output = convert_vbridger_config(input).unwrap();
+        let output = convert_vitamins_config(input).unwrap();
         let parsed: Vec<CalcFn> = serde_json::from_str(&output).unwrap();
         assert_eq!(parsed.len(), 0);
     }
@@ -1021,17 +1021,17 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
         let input = r#"{"version":"0.9.7","customParam":[
             {"func":"return jawOpen","max":1,"min":0,"default":0,"type":"simple","sendFlag":"true","paramName":"param_JawOpen"}
         ],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
-        let output = convert_vbridger_config(input).unwrap();
+        let output = convert_vitamins_config(input).unwrap();
         // Must parse as valid JSON array
         let _: serde_json::Value = serde_json::from_str(&output).unwrap();
     }
 
     #[test]
-    fn test_full_config_vbridger_compatible_maru() {
-        // Test with a representative subset of the actual VBridgerCompatibleMaruVer config
-        let input = r#"{"version":"0.9.7","customParam":[{"func":"let result = headRotY\nlet inmin=-40.0, inmax=40;         //input range\nlet outmin=-30.0, outmax=30.0;     //output range\nlet x1=.54,y1=.03;\nlet x2=1-x1,y2=1-y1;\nlet points = 10000;\nlet lowP = 62;","max":30,"min":-30,"default":0,"type":"complex","sendFlag":"true","paramName":"param_FaceAngleX"},{"func":"return headPosX * - 1//+((ref.FaceAngleX+30)/60*8)","max":15,"min":-15,"default":0,"type":"simple","sendFlag":"true","paramName":"param_FacePositionX"},{"func":"return (eyeSquint_L)","max":1,"min":0,"default":0,"type":"simple","sendFlag":"true","paramName":"param_Eye_Squint_L"},{"func":"return tongueOut","max":1,"min":0,"default":0,"type":"simple","sendFlag":"true","paramName":"param_TongueOut"}],"author":"Maruseu","description":"","saveName":"VBridgerCompatibleMaruVer","isDefault":false}"#;
+    fn test_full_config_vitamins_compatible_maru() {
+        // Test with a representative subset of the actual VitaminsCompatibleMaruVer config
+        let input = r#"{"version":"0.9.7","customParam":[{"func":"let result = headRotY\nlet inmin=-40.0, inmax=40;         //input range\nlet outmin=-30.0, outmax=30.0;     //output range\nlet x1=.54,y1=.03;\nlet x2=1-x1,y2=1-y1;\nlet points = 10000;\nlet lowP = 62;","max":30,"min":-30,"default":0,"type":"complex","sendFlag":"true","paramName":"param_FaceAngleX"},{"func":"return headPosX * - 1//+((ref.FaceAngleX+30)/60*8)","max":15,"min":-15,"default":0,"type":"simple","sendFlag":"true","paramName":"param_FacePositionX"},{"func":"return (eyeSquint_L)","max":1,"min":0,"default":0,"type":"simple","sendFlag":"true","paramName":"param_Eye_Squint_L"},{"func":"return tongueOut","max":1,"min":0,"default":0,"type":"simple","sendFlag":"true","paramName":"param_TongueOut"}],"author":"Maruseu","description":"","saveName":"VitaminsCompatibleMaruVer","isDefault":false}"#;
 
-        let output = convert_vbridger_config(input).unwrap();
+        let output = convert_vitamins_config(input).unwrap();
         let parsed: Vec<CalcFn> = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed.len(), 4);

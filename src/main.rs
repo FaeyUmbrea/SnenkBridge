@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{
         atomic::AtomicBool,
         mpsc::{self, Receiver, Sender},
@@ -7,7 +8,7 @@ use std::{
     thread,
 };
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use snenk_bridge_service::{
     tracking::{
         client::{TrackingClient, TrackingClientType},
@@ -15,6 +16,7 @@ use snenk_bridge_service::{
         response::TrackingResponse,
         vtubestudio::VTubeStudioTrackingClient,
     },
+    vitamins,
     vts::plugin::VTubeStudioPlugin,
 };
 
@@ -28,18 +30,22 @@ fn parse_tracking_client_type(input: &str) -> Result<TrackingClientType, String>
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    // Legacy flat args for the `bridge` mode (backwards compat)
     #[arg(short, long, help = "Path to JSON config with transformations")]
-    config: String,
+    config: Option<String>,
     #[arg(short, long, help = "Phone IP address")]
-    phone_ip: String,
+    phone_ip: Option<String>,
     #[arg(
         short,
         long,
         value_parser = parse_tracking_client_type,
         help = "Tracking application type"
     )]
-    tracking_client: TrackingClientType,
+    tracking_client: Option<TrackingClientType>,
     #[arg(
         short,
         long,
@@ -62,8 +68,72 @@ struct Args {
     vts_port: String,
 }
 
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Convert a Vitamins .vps preset file to SnenkBridge JSON format
+    Convert {
+        /// Path to the input .vps file
+        input: PathBuf,
+        /// Output path (defaults to input filename with .json extension)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
 fn main() {
-    let args = Args::parse();
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Convert { input, output }) => {
+            run_convert(input, output);
+        }
+        None => {
+            run_bridge(cli);
+        }
+    }
+}
+
+fn run_convert(input: PathBuf, output: Option<PathBuf>) {
+    let output = output.unwrap_or_else(|| input.with_extension("json"));
+
+    let content = match std::fs::read_to_string(&input) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+
+    let converted = match vitamins::convert_vitamins_config(&content) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error converting {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+
+    match std::fs::write(&output, &converted) {
+        Ok(_) => println!("Converted {} -> {}", input.display(), output.display()),
+        Err(e) => {
+            eprintln!("Error writing {}: {}", output.display(), e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_bridge(cli: Cli) {
+    let config = cli.config.unwrap_or_else(|| {
+        eprintln!("Error: --config is required for bridge mode");
+        std::process::exit(1);
+    });
+    let phone_ip = cli.phone_ip.unwrap_or_else(|| {
+        eprintln!("Error: --phone-ip is required for bridge mode");
+        std::process::exit(1);
+    });
+    let tracking_client = cli.tracking_client.unwrap_or_else(|| {
+        eprintln!("Error: --tracking-client is required for bridge mode");
+        std::process::exit(1);
+    });
 
     println!("Github: https://github.com/FaeyUmbrea/SnenkBridge");
 
@@ -80,21 +150,20 @@ fn main() {
     let pctr_handler = thread::spawn(move || {
         VTubeStudioPlugin::new(
             receiver,
-            args.config,
-            args.config_reload_delay,
-            args.face_search_timeout,
-            args.vts_ip,
-            args.vts_port,
+            config,
+            cli.config_reload_delay,
+            cli.face_search_timeout,
+            cli.vts_ip,
+            cli.vts_port,
         )
         .run(active_flag);
     });
 
-    let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match args.tracking_client
-    {
+    let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match tracking_client {
         TrackingClientType::VTubeStudio => VTubeStudioTrackingClient::run,
         TrackingClientType::IFacialMocap => IFacialMocapTrackingClinet::run,
     };
-    let phonetr_handler = thread::spawn(move || function(args.phone_ip, sender, active_flag_clone));
+    let phonetr_handler = thread::spawn(move || function(phone_ip, sender, active_flag_clone));
 
     let _ = pctr_handler.join();
     let _ = phonetr_handler.join();

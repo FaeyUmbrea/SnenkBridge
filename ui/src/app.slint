@@ -140,7 +140,7 @@ export component App inherits Window {
     preferred-height: 380px;
     background: #141422;
 
-    in-out property<string> transform-path;
+    in-out property<int> preset-index: 0;
     in-out property<string> phone-ip: "127.0.0.1";
     in-out property<int> tracking-type-index: 0;
     in-out property<string> face-search-timeout: "3000";
@@ -154,8 +154,9 @@ export component App inherits Window {
     in-out property<string> target-status: "Disconnected";
     in-out property<color> target-status-color: #cc4444;
     in-out property<string> error-text;
+    in-out property<bool> has-custom-preset: false;
 
-    callback browse-file();
+    callback import-preset();
     callback toggle-source();
     callback toggle-target();
     callback settings-changed();
@@ -262,19 +263,21 @@ export component App inherits Window {
                 }
             }
 
-            // Config file — input + browse fused
+            // Preset selector + import
             HorizontalLayout {
                 spacing: 0;
-                StyledInput {
-                    placeholder: "Path to config file...";
-                    text <=> root.transform-path;
+                FieldLabel { text: "Preset"; }
+                StyledCombo {
+                    model: root.has-custom-preset
+                        ? ["Default", "VBridger Compatible", "Custom"]
+                        : ["Default", "VBridger Compatible"];
+                    current-index <=> root.preset-index;
                     enabled: !root.target-active;
                     horizontal-stretch: 1;
-                    round-right: false;
-                    edited(val) => { root.settings-changed(); }
+                    selected(val) => { root.settings-changed(); }
                 }
                 Btn {
-                    label: "Browse";
+                    label: "Import";
                     enabled: !root.target-active;
                     width: 72px;
                     round-left: false;
@@ -282,8 +285,15 @@ export component App inherits Window {
                     hover-bg: #3a3a5c;
                     base-border: #3d3d5c;
                     hover-border: #6c6cb5;
-                    clicked => { root.browse-file(); }
+                    clicked => { root.import-preset(); }
                 }
+            }
+
+            // Preset credit
+            Text {
+                text: "Presets by Maruseu — github.com/maruseu/VitaminsPresets";
+                color: #444466;
+                font-size: 10px;
             }
 
             HorizontalLayout {

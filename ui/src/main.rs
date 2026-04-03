@@ -6,6 +6,7 @@ use snenk_bridge_service::{
         response::TrackingResponse,
         vtubestudio::VTubeStudioTrackingClient,
     },
+    vitamins,
     vts::plugin::VTubeStudioPlugin,
 };
 use std::{
@@ -19,6 +20,14 @@ use std::{
 };
 
 slint::include_modules!();
+
+// ─── Embedded presets ───────────────────────────────────────────────
+// Presets by Maruseu (https://github.com/maruseu/VitaminsPresets),
+// included with permission. These are NOT covered by the project's
+// GPL license and are NOT republished under GPL.
+
+const PRESET_DEFAULT: &str = include_str!("../presets/default.json");
+const PRESET_VBRIDGER_COMPATIBLE: &str = include_str!("../presets/vbridger_compatible.json");
 
 // ─── Colors ────────────────────────────────────────────────────────
 
@@ -36,7 +45,7 @@ fn color(rgb: (u8, u8, u8)) -> slint::Color {
 #[derive(Serialize, Deserialize)]
 struct Settings {
     #[serde(default)]
-    transform_path: String,
+    preset_index: i32,
     #[serde(default = "default_ip")]
     phone_ip: String,
     #[serde(default)]
@@ -65,7 +74,7 @@ fn default_vts_port() -> String {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            transform_path: String::new(),
+            preset_index: 0,
             phone_ip: default_ip(),
             tracking_type_index: 0,
             face_search_timeout: default_timeout(),
@@ -75,14 +84,20 @@ impl Default for Settings {
     }
 }
 
+fn app_dir() -> std::path::PathBuf {
+    let dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("SnenkBridge");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 fn settings_path() -> std::path::PathBuf {
-    if let Some(dir) = dirs::config_dir() {
-        let app_dir = dir.join("SnenkBridge");
-        let _ = std::fs::create_dir_all(&app_dir);
-        app_dir.join("settings.json")
-    } else {
-        std::path::PathBuf::from("settings.json")
-    }
+    app_dir().join("settings.json")
+}
+
+fn custom_preset_path() -> std::path::PathBuf {
+    app_dir().join("custom.json")
 }
 
 fn load_settings() -> Settings {
@@ -102,13 +117,63 @@ fn save_settings(settings: &Settings) {
 
 fn read_settings_from_ui(ui: &App) -> Settings {
     Settings {
-        transform_path: ui.get_transform_path().to_string(),
+        preset_index: ui.get_preset_index(),
         phone_ip: ui.get_phone_ip().to_string(),
         tracking_type_index: ui.get_tracking_type_index(),
         face_search_timeout: ui.get_face_search_timeout().to_string(),
         vts_ip: ui.get_vts_ip().to_string(),
         vts_port: ui.get_vts_port().to_string(),
     }
+}
+
+/// Returns the config JSON string for the selected preset index.
+/// For built-in presets, returns the embedded string directly.
+/// For custom (index 2), reads from the appdir custom.json file.
+fn resolve_preset_config(index: i32) -> Result<String, String> {
+    match index {
+        0 => Ok(PRESET_DEFAULT.to_string()),
+        1 => Ok(PRESET_VBRIDGER_COMPATIBLE.to_string()),
+        2 => {
+            let path = custom_preset_path();
+            std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read custom preset: {}", e))
+        }
+        _ => Ok(PRESET_DEFAULT.to_string()),
+    }
+}
+
+/// Validates that a JSON string parses as a valid CalcFn array.
+fn validate_config_json(json: &str) -> Result<(), String> {
+    let _: Vec<vitamins::CalcFn> =
+        serde_json::from_str(json).map_err(|e| format!("Invalid config format: {}", e))?;
+    Ok(())
+}
+
+/// Imports a file as a custom preset. JSON files are validated and copied directly.
+/// VPS files are converted first.
+fn import_preset_file(path: &Path) -> Result<(), String> {
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let json = match ext.as_str() {
+        "json" => {
+            validate_config_json(&content)?;
+            content
+        }
+        "vps" => vitamins::convert_vitamins_config(&content)?,
+        _ => return Err("Unsupported file type. Use .json or .vps files.".into()),
+    };
+
+    std::fs::write(custom_preset_path(), &json)
+        .map_err(|e| format!("Failed to save custom preset: {}", e))?;
+
+    Ok(())
 }
 
 fn tracking_client_type(index: i32) -> TrackingClientType {
@@ -134,12 +199,15 @@ fn main() {
     let app = App::new().unwrap();
 
     let settings = load_settings();
-    app.set_transform_path(settings.transform_path.into());
+    let has_custom = custom_preset_path().is_file();
+
+    app.set_preset_index(settings.preset_index);
     app.set_phone_ip(settings.phone_ip.into());
     app.set_tracking_type_index(settings.tracking_type_index);
     app.set_face_search_timeout(settings.face_search_timeout.into());
     app.set_vts_ip(settings.vts_ip.into());
     app.set_vts_port(settings.vts_port.into());
+    app.set_has_custom_preset(has_custom);
 
     let source_active = Arc::new(AtomicBool::new(false));
     let target_active = Arc::new(AtomicBool::new(false));
@@ -149,7 +217,7 @@ fn main() {
     // the sender here; the source bridge forwards tracking data through it.
     let plugin_tx: Arc<Mutex<Option<Sender<TrackingResponse>>>> = Arc::new(Mutex::new(None));
 
-    // Settings changed → persist
+    // Settings changed -> persist
     {
         let weak = app.as_weak();
         app.on_settings_changed(move || {
@@ -158,10 +226,10 @@ fn main() {
         });
     }
 
-    // Browse file
+    // Import preset
     {
         let weak = app.as_weak();
-        app.on_browse_file(move || {
+        app.on_import_preset(move || {
             let weak = weak.clone();
             std::thread::spawn(move || {
                 let file = rfd::FileDialog::new()
@@ -170,11 +238,20 @@ fn main() {
                     .add_filter("Vitamins preset", &["vps"])
                     .pick_file();
                 if let Some(path) = file {
-                    let path_str: slint::SharedString = path.to_string_lossy().to_string().into();
+                    let result = import_preset_file(&path);
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(ui) = weak.upgrade() {
-                            ui.set_transform_path(path_str);
-                            save_settings(&read_settings_from_ui(&ui));
+                            match result {
+                                Ok(_) => {
+                                    ui.set_has_custom_preset(true);
+                                    ui.set_preset_index(2); // Switch to Custom
+                                    ui.set_error_text("".into());
+                                    save_settings(&read_settings_from_ui(&ui));
+                                }
+                                Err(e) => {
+                                    ui.set_error_text(e.into());
+                                }
+                            }
                         }
                     });
                 }
@@ -270,11 +347,23 @@ fn main() {
                 return;
             }
 
-            let transform_path = ui.get_transform_path().to_string();
-            if !Path::new(&transform_path).is_file() {
-                ui.set_error_text(format!("Config file not found: {}", transform_path).into());
+            // Resolve the preset config to a temp file for the plugin
+            let preset_index = ui.get_preset_index();
+            let config_json = match resolve_preset_config(preset_index) {
+                Ok(json) => json,
+                Err(e) => {
+                    ui.set_error_text(e.into());
+                    return;
+                }
+            };
+
+            // Write the active config to a temp file in the app dir
+            let active_config_path = app_dir().join("active_config.json");
+            if let Err(e) = std::fs::write(&active_config_path, &config_json) {
+                ui.set_error_text(format!("Failed to write config: {}", e).into());
                 return;
             }
+            let transform_path = active_config_path.to_string_lossy().to_string();
 
             ui.set_error_text("".into());
             ui.set_target_status("Connecting...".into());
