@@ -41,16 +41,41 @@ pub struct CalcFn {
 ///
 /// Complex parameters (bezier easing, delay buffers) are simplified to their
 /// core expressions — the easing curves and stateful smoothing are discarded.
+/// Delay buffer references (`ref.ParamName`) are resolved by inlining the
+/// referenced parameter's expression from the same config.
 pub fn convert_vitamins_config(input: &str) -> Result<String, String> {
     let vb: VitaminsConfig =
         serde_json::from_str(input).map_err(|e| format!("Failed to parse Vitamins config: {e}"))?;
 
-    let calc_fns: Vec<CalcFn> = vb
+    // First pass: convert all parameters
+    let mut calc_fns: Vec<CalcFn> = vb
         .custom_param
         .into_iter()
         .filter(|p| p.send_flag == "true")
         .map(convert_param)
         .collect();
+
+    // Second pass: resolve delay buffer references.
+    // A delay buffer produces a func like "@@ref:FaceAngleX" which is a placeholder.
+    // We look up the referenced parameter by name and inline its expression.
+    let resolved_map: HashMap<String, String> = calc_fns
+        .iter()
+        .filter(|f| !f.func.starts_with("@@ref:"))
+        .map(|f| (f.name.clone(), f.func.clone()))
+        .collect();
+
+    for calc_fn in &mut calc_fns {
+        if let Some(ref_name) = calc_fn.func.strip_prefix("@@ref:") {
+            calc_fn.func = resolved_map
+                .get(ref_name)
+                .cloned()
+                .unwrap_or_else(|| ref_name.to_string());
+        }
+    }
+
+    // Third pass: apply Vitamins→VTS naming fixups.
+    // Vitamins uses different axis conventions from VTube Studio.
+    apply_vts_fixups(&mut calc_fns);
 
     serde_json::to_string_pretty(&calc_fns).map_err(|e| format!("Failed to serialize output: {e}"))
 }
@@ -78,17 +103,129 @@ fn convert_param(param: VitaminsParam) -> CalcFn {
     }
 }
 
+/// Strips block comments (`/* ... */`) from a string.
+fn strip_block_comments(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut remaining = input;
+    while let Some(start) = remaining.find("/*") {
+        result.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start..].find("*/") {
+            remaining = &remaining[start + end + 2..];
+        } else {
+            // Unclosed block comment — discard rest
+            return result;
+        }
+    }
+    result.push_str(remaining);
+    result
+}
+
+/// Applies Vitamins→VTube Studio naming and axis fixups.
+///
+/// Vitamins uses different conventions from VTS:
+/// - FaceAngleX/Y are swapped (Vitamins X = yaw, VTS X = pitch)
+/// - FaceAngleY (yaw) needs negation for correct direction
+/// - BodyAngleX/Y need negation
+/// - Eye_Squint_L/R should be EyeSquintL/R
+fn apply_vts_fixups(calc_fns: &mut Vec<CalcFn>) {
+    // Swap FaceAngleX ↔ FaceAngleY names (Vitamins X = yaw, VTS X = pitch)
+    let mut x_idx = None;
+    let mut y_idx = None;
+    for (i, f) in calc_fns.iter().enumerate() {
+        if f.name == "FaceAngleX" {
+            x_idx = Some(i);
+        }
+        if f.name == "FaceAngleY" {
+            y_idx = Some(i);
+        }
+    }
+    match (x_idx, y_idx) {
+        (Some(xi), Some(yi)) => {
+            // Both present — swap names, min, max, and default_value
+            let x_name = calc_fns[xi].name.clone();
+            let x_min = calc_fns[xi].min;
+            let x_max = calc_fns[xi].max;
+            let x_default = calc_fns[xi].default_value;
+            calc_fns[xi].name = calc_fns[yi].name.clone();
+            calc_fns[xi].min = calc_fns[yi].min;
+            calc_fns[xi].max = calc_fns[yi].max;
+            calc_fns[xi].default_value = calc_fns[yi].default_value;
+            calc_fns[yi].name = x_name;
+            calc_fns[yi].min = x_min;
+            calc_fns[yi].max = x_max;
+            calc_fns[yi].default_value = x_default;
+        }
+        (Some(xi), None) => {
+            // Only X present — rename to Y (Vitamins X = VTS Y)
+            calc_fns[xi].name = "FaceAngleY".to_string();
+        }
+        (None, Some(yi)) => {
+            // Only Y present — rename to X (Vitamins Y = VTS X)
+            calc_fns[yi].name = "FaceAngleX".to_string();
+        }
+        _ => {}
+    }
+
+    for calc_fn in calc_fns.iter_mut() {
+        match calc_fn.name.as_str() {
+            // Negate FaceAngleY (was FaceAngleX in Vitamins, contains yaw/headRotY)
+            "FaceAngleY" => {
+                calc_fn.func = negate_expr(&calc_fn.func);
+            }
+            // Negate BodyAngleX and BodyAngleY for correct VTS direction
+            "BodyAngleX" | "BodyAngleY" => {
+                calc_fn.func = negate_expr(&calc_fn.func);
+            }
+            _ => {}
+        }
+
+        // Fix Eye_Squint_L/R naming
+        if calc_fn.name == "Eye_Squint_L" {
+            calc_fn.name = "EyeSquintL".to_string();
+        }
+        if calc_fn.name == "Eye_Squint_R" {
+            calc_fn.name = "EyeSquintR".to_string();
+        }
+    }
+}
+
+/// Negates an expression by prepending `- ` or simplifying double negation.
+fn negate_expr(expr: &str) -> String {
+    let trimmed = expr.trim();
+
+    // If expression starts with "( - ((" pattern (double negation from Vitamins),
+    // simplify by removing the outer negation
+    if trimmed.starts_with("( - ((") || trimmed.starts_with("( -((" ) {
+        // Remove "( - (" prefix and matching trailing ")"
+        let inner = trimmed
+            .strip_prefix("( - (")
+            .or_else(|| trimmed.strip_prefix("( -("))
+            .unwrap_or(trimmed);
+        if let Some(inner) = inner.strip_suffix(")") {
+            // Also need to remove inner negations on variables: (-headRotX → (headRotX
+            let simplified = inner
+                .replace("(-", "(")
+                .replace("( -", "(");
+            return format!("({simplified})");
+        }
+    }
+
+    format!("- {trimmed}")
+}
+
 /// Extracts the core expression from a complex Vitamins function.
 ///
 /// Complex functions follow one of two patterns:
 /// 1. Bezier curve: `let result = <expr>\n let inmin=...` — extract expr, use outmin/outmax
 /// 2. Delay buffer: `let p=ref.ParamName;` — extract the ref and convert
 fn convert_complex_func(func: &str, fallback_min: f64, fallback_max: f64) -> (String, f64, f64) {
-    let lines: Vec<&str> = func.lines().collect();
+    // Strip block comments before processing
+    let cleaned = strip_block_comments(func);
+    let lines: Vec<&str> = cleaned.lines().collect();
 
-    // Check for delay buffer pattern (uses ref.*)
-    if let Some(first_line) = lines.first() {
-        let trimmed = first_line.trim();
+    // Check for delay buffer pattern anywhere in the function
+    for line in &lines {
+        let trimmed = line.trim();
         if trimmed.starts_with("let p=ref.") || trimmed.starts_with("let p = ref.") {
             return convert_delay_buffer_func(&lines, fallback_min, fallback_max);
         }
@@ -126,9 +263,16 @@ fn convert_bezier_func(lines: &[&str], fallback_min: f64, fallback_max: f64) -> 
     }
 
     if core_expr.is_empty() {
-        // Fallback: try to use the first line as the expression
-        if let Some(first) = lines.first() {
-            core_expr = first.trim().to_string();
+        // Fallback: try to use the first non-empty line as the expression
+        for line in lines {
+            let trimmed = line.trim();
+            if !trimmed.is_empty()
+                && !trimmed.starts_with("let ")
+                && !trimmed.starts_with("//")
+            {
+                core_expr = trimmed.to_string();
+                break;
+            }
         }
     }
 
@@ -167,8 +311,9 @@ fn convert_delay_buffer_func(
     }
 
     // The delay buffer is a smoothing filter on a referenced parameter.
-    // Since evalexpr is stateless, we output the direct reference as an approximation.
-    let func = convert_variable_name(&ref_param);
+    // Output a placeholder that convert_vitamins_config resolves by inlining
+    // the referenced parameter's expression.
+    let func = format!("@@ref:{ref_param}");
     (func, outmin, outmax)
 }
 
@@ -300,6 +445,7 @@ fn replace_identifier(input: &str, from: &str, to: &str) -> String {
     result
 }
 
+#[cfg(test)]
 fn convert_variable_name(name: &str) -> String {
     let mapping = build_variable_mapping();
     mapping
@@ -432,7 +578,8 @@ let inmin=-30.0, inmax=30;         //input range
 let outmin=-10.0, outmax=10.0;     //output range
 stuff"#;
         let (expr, min, max) = convert_complex_func(func, -30.0, 30.0);
-        assert_eq!(expr, "FaceAngleX");
+        // First pass returns placeholder; convert_vitamins_config resolves it
+        assert_eq!(expr, "@@ref:FaceAngleX");
         assert_eq!(min, -10.0);
         assert_eq!(max, 10.0);
     }
@@ -757,7 +904,7 @@ let dC=8;        //delay counter
 let inmin=-30.0, inmax=30;         //input range
 let outmin=-10.0, outmax=10.0;     //output range"#;
         let (expr, min, max) = convert_complex_func(func, -30.0, 30.0);
-        assert_eq!(expr, "FaceAngleY");
+        assert_eq!(expr, "@@ref:FaceAngleY");
         assert_eq!(min, -10.0);
         assert_eq!(max, 10.0);
     }
@@ -770,18 +917,45 @@ let dC=4;        //delay counter
 let inmin=-30.0, inmax=30;         //input range
 let outmin=-10.0, outmax=10.0;     //output range"#;
         let (expr, min, max) = convert_complex_func(func, -40.0, 40.0);
-        assert_eq!(expr, "FaceAngleZ");
+        assert_eq!(expr, "@@ref:FaceAngleZ");
         assert_eq!(min, -10.0);
         assert_eq!(max, 10.0);
     }
 
     #[test]
     fn test_complex_delay_buffer_face_position_y() {
-        // This func starts with a block comment, not "let p=ref." on the first line,
-        // so it falls through to the bezier path. The ref pattern is on line 4.
         let func = "let p=ref.FaceAngleY;\nlet s=2.0;\nlet dC=8;\nlet inmin=-30.0, inmax=30;\nlet outmin=-10.0, outmax=10.0;";
         let (expr, min, max) = convert_complex_func(func, -15.0, 15.0);
-        assert_eq!(expr, "FaceAngleY");
+        assert_eq!(expr, "@@ref:FaceAngleY");
+        assert_eq!(min, -10.0);
+        assert_eq!(max, 10.0);
+    }
+
+    #[test]
+    fn test_delay_buffer_resolved_in_full_conversion() {
+        // When going through convert_vitamins_config, delay buffer refs get resolved
+        // and VTS fixups are applied (FaceAngleX→FaceAngleY swap, BodyAngleX negation)
+        let input = r#"{"version":"0.9.7","customParam":[
+            {"func":"return headRotY * 1.5","max":40,"min":-40,"default":0,"type":"simple","sendFlag":"true","paramName":"param_FaceAngleX"},
+            {"func":"let p=ref.FaceAngleX;\nlet s=2.0;\nlet dC=8;\nlet inmin=-30.0, inmax=30;\nlet outmin=-10.0, outmax=10.0;","max":10,"min":-10,"default":0,"type":"complex","sendFlag":"true","paramName":"param_BodyAngleX"}
+        ],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
+        let output = convert_vitamins_config(input).unwrap();
+        let parsed: Vec<CalcFn> = serde_json::from_str(&output).unwrap();
+        // FaceAngleX renamed to FaceAngleY by VTS fixup (axis swap)
+        assert_eq!(parsed[0].name, "FaceAngleY");
+        // FaceAngleY expression negated by VTS fixup
+        assert_eq!(parsed[0].func, "- HeadRotY * 1.5");
+        // BodyAngleX resolves ref and gets negated
+        assert_eq!(parsed[1].name, "BodyAngleX");
+        assert_eq!(parsed[1].func, "- HeadRotY * 1.5");
+    }
+
+    #[test]
+    fn test_block_comment_stripped() {
+        let func = "/*let result = headPosY+((ref.FaceAngleY+30)/60*8)\nreturn result\n*/\nlet p=ref.FaceAngleY;\nlet s=2.0;\nlet dC=8;\nlet inmin=-30.0, inmax=30;\nlet outmin=-10.0, outmax=10.0;";
+        let (expr, min, max) = convert_complex_func(func, -15.0, 15.0);
+        // Block comment is stripped, delay buffer pattern is found
+        assert_eq!(expr, "@@ref:FaceAngleY");
         assert_eq!(min, -10.0);
         assert_eq!(max, 10.0);
     }
@@ -1036,15 +1210,17 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
         assert_eq!(parsed.len(), 4);
 
-        assert_eq!(parsed[0].name, "FaceAngleX");
-        assert_eq!(parsed[0].func, "HeadRotY");
+        // FaceAngleX renamed to FaceAngleY (axis swap), expression negated
+        assert_eq!(parsed[0].name, "FaceAngleY");
+        assert_eq!(parsed[0].func, "- HeadRotY");
         assert_eq!(parsed[0].min, -30.0);
         assert_eq!(parsed[0].max, 30.0);
 
         assert_eq!(parsed[1].name, "FacePositionX");
         assert_eq!(parsed[1].func, "HeadPosX * - 1");
 
-        assert_eq!(parsed[2].name, "Eye_Squint_L");
+        // Eye_Squint_L renamed to EyeSquintL
+        assert_eq!(parsed[2].name, "EyeSquintL");
         assert_eq!(parsed[2].func, "(EyeSquintLeft)");
 
         assert_eq!(parsed[3].name, "TongueOut");

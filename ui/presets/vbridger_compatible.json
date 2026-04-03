@@ -1,13 +1,13 @@
 [
   {
-    "name": "FaceAngleX",
-    "func": "HeadRotY",
+    "name": "FaceAngleY",
+    "func": "- HeadRotY",
     "min": -40.0,
     "max": 40.0,
     "defaultValue": 0.0
   },
   {
-    "name": "FaceAngleY",
+    "name": "FaceAngleX",
     "func": "( - ((-HeadRotX * ((90 - math::abs(HeadRotY)) / 90)) + (-HeadRotZ * (HeadRotY / 45))))",
     "min": -40.0,
     "max": 40.0,
@@ -84,14 +84,14 @@
     "defaultValue": 0.0
   },
   {
-    "name": "Eye_Squint_L",
+    "name": "EyeSquintL",
     "func": "(EyeSquintLeft)",
     "min": 0.0,
     "max": 1.0,
     "defaultValue": 0.0
   },
   {
-    "name": "Eye_Squint_R",
+    "name": "EyeSquintR",
     "func": "(EyeSquintRight)",
     "min": 0.0,
     "max": 1.0,
@@ -197,14 +197,14 @@
   },
   {
     "name": "BodyAngleX",
-    "func": "HeadRotY * 1.5",
+    "func": "- HeadRotY * 1.5",
     "min": -40.0,
     "max": 40.0,
     "defaultValue": 0.0
   },
   {
     "name": "BodyAngleY",
-    "func": "( HeadRotX * 1.5)  + ( (EyeBlinkLeft + EyeBlinkRight) * - 1)",
+    "func": "- ( HeadRotX * 1.5)  + ( (EyeBlinkLeft + EyeBlinkRight) * - 1)",
     "min": -40.0,
     "max": 40.0,
     "defaultValue": 0.0
