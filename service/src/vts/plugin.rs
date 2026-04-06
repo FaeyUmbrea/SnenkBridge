@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     net::{TcpStream, UdpSocket},
     sync::{
@@ -21,10 +21,16 @@ use tungstenite::{stream::MaybeTlsStream, Message, WebSocket};
 use crate::{
     tracking::response::TrackingResponse,
     utils::{get_current_timestamp, get_current_timestamp_ms},
+    vitamins::{CalcFn, DelayBuffer},
     vts::{requests, responses},
 };
 
-type PrecalcCfg = (Vec<(String, String, Node)>, HashSet<u64>, VecDeque<Message>);
+type PrecalcCfg = (
+    Vec<(String, String, Node)>,
+    HashSet<u64>,
+    VecDeque<Message>,
+    Vec<(String, DelayBufferState)>,
+);
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -49,20 +55,49 @@ struct VTSApiRequest<'a, T> {
     data: Option<T>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct CalcFn {
-    name: String,
-    func: String,
-    min: f64,
-    max: f64,
-    default_value: f64,
+/// Runtime state for a delay buffer parameter.
+struct DelayBufferState {
+    config: DelayBuffer,
+    ring: Vec<f64>,
+    write_pos: usize,
+    smoothed: f64,
+}
+
+impl DelayBufferState {
+    fn new(config: DelayBuffer) -> Self {
+        let ring = vec![0.0; config.delay_count];
+        Self {
+            config,
+            ring,
+            write_pos: 0,
+            smoothed: 0.0,
+        }
+    }
+
+    /// Feeds the referenced parameter's current value and returns the
+    /// smoothed, delayed, range-mapped output.
+    fn update(&mut self, input: f64) -> f64 {
+        // Range-map input from [in_min, in_max] to [out_min, out_max]
+        let clamped = input.clamp(self.config.in_min, self.config.in_max);
+        let normalized = (clamped - self.config.in_min) / (self.config.in_max - self.config.in_min);
+        let mapped = normalized * (self.config.out_max - self.config.out_min) + self.config.out_min;
+
+        // Store in ring buffer
+        self.ring[self.write_pos] = mapped;
+        self.write_pos = (self.write_pos + 1) % self.ring.len();
+
+        // Read delayed value (oldest in ring buffer)
+        let delayed = self.ring[self.write_pos % self.ring.len()];
+
+        // Exponential smoothing
+        self.smoothed += (delayed - self.smoothed) / self.config.smoothing;
+        self.smoothed
+    }
 }
 
 pub struct VTubeStudioPlugin {
     receiver: Receiver<TrackingResponse>,
-    transformation_cfg_path: String,
-    config_reload_interval: Duration,
+    transformation_cfg: String,
     face_search_timeout: u64,
     vts_ip: String,
     vts_port: String,
@@ -78,16 +113,14 @@ impl VTubeStudioPlugin {
 
     pub fn new(
         receiver: Receiver<TrackingResponse>,
-        transformation_cfg_path: String,
-        config_reload_delay: u64,
+        transformation_cfg: String,
         face_search_timeout: u64,
         vts_ip: String,
         vts_port: String,
     ) -> Self {
         Self {
             receiver,
-            transformation_cfg_path,
-            config_reload_interval: Duration::from_millis(config_reload_delay),
+            transformation_cfg,
             face_search_timeout,
             vts_ip,
             vts_port,
@@ -179,30 +212,15 @@ impl VTubeStudioPlugin {
         let mut token: Option<String> = fs::read_to_string(&token_path).ok();
 
         let vts_status = VTubeStudioPlugin::req_status_msg();
-        let (mut precalc_funcs, mut used_timestamps, mut new_params) = self.precalc_cfg();
+        let (mut precalc_funcs, mut used_timestamps, mut new_params, mut delay_buffers) =
+            self.precalc_cfg();
 
         msg_buffer.push_back(vts_status.clone());
         msg_buffer.append(&mut new_params);
 
-        let mut last_time_config_reloaded = Instant::now();
-
         let mut dont_send = false;
 
         while active.load(Ordering::Relaxed) {
-            if !self.config_reload_interval.is_zero()
-                && last_time_config_reloaded.elapsed() > self.config_reload_interval
-            {
-                last_time_config_reloaded = Instant::now();
-
-                (precalc_funcs, used_timestamps, new_params) = self.precalc_cfg();
-
-                msg_buffer.clear();
-                msg_buffer.push_back(vts_status.clone());
-                msg_buffer.append(&mut new_params);
-
-                info!("Config reloaded")
-            }
-
             if !dont_send {
                 if let Some(msg) = msg_buffer.front() {
                     match websocket.send(msg.clone()) {
@@ -213,7 +231,7 @@ impl VTubeStudioPlugin {
                         }
                     }
                 } else if let Some(tracking_data) =
-                    self.tracking_msg(&precalc_funcs, &used_timestamps)
+                    self.tracking_msg(&precalc_funcs, &used_timestamps, &mut delay_buffers)
                 {
                     match websocket.send(tracking_data) {
                         Ok(_) => {}
@@ -472,6 +490,7 @@ impl VTubeStudioPlugin {
         &self,
         precalc_funcs: &Vec<(String, String, Node)>,
         used_timestamps: &HashSet<u64>,
+        delay_buffers: &mut Vec<(String, DelayBufferState)>,
     ) -> Option<Message> {
         let mut context = HashMapContext::new();
 
@@ -524,18 +543,35 @@ impl VTubeStudioPlugin {
 
         let mut params: Vec<requests::TrackingParam> = Vec::new();
 
+        // Collect computed expression outputs for delay buffer references
+        let mut computed_outputs: HashMap<String, f64> = HashMap::new();
+
         if raw_data.face_found {
             for (key, _, node) in precalc_funcs {
+                let value = node
+                    .eval_with_context(&context)
+                    .unwrap()
+                    .as_float()
+                    .unwrap()
+                    .clamp(-1000000.0, 1000000.0);
+                computed_outputs.insert(key.clone(), value);
                 params.push(requests::TrackingParam {
                     id: key.as_str(),
-                    value: node
-                        .eval_with_context(&context)
-                        .unwrap()
-                        .as_float()
-                        .unwrap()
-                        .clamp(-1000000.0, 1000000.0),
+                    value,
                     weight: Some(1.0),
                 });
+            }
+
+            // Process delay buffer parameters
+            for (name, db_state) in delay_buffers.iter_mut() {
+                if let Some(&ref_value) = computed_outputs.get(&db_state.config.ref_param) {
+                    let value = db_state.update(ref_value).clamp(-1000000.0, 1000000.0);
+                    params.push(requests::TrackingParam {
+                        id: name.as_str(),
+                        value,
+                        weight: Some(1.0),
+                    });
+                }
             }
         }
 
@@ -636,10 +672,7 @@ impl VTubeStudioPlugin {
     }
 
     fn precalc_cfg(&self) -> PrecalcCfg {
-        info!(
-            "Loadling tranformation config: {}",
-            &self.transformation_cfg_path
-        );
+        info!("Loading transformation config");
 
         let def_params = [
             String::from("FacePositionX"),
@@ -667,30 +700,19 @@ impl VTubeStudioPlugin {
         ];
 
         let mut new_params: VecDeque<Message> = VecDeque::new();
-        let config = match fs::read_to_string(&self.transformation_cfg_path) {
-            Ok(content) => content,
-            Err(error) => {
-                warn!(
-                    "Unable to load transformation config '{}': {}",
-                    &self.transformation_cfg_path, error
-                );
-                return (Vec::new(), HashSet::new(), new_params);
-            }
-        };
 
-        let calc_fns: Vec<CalcFn> = match serde_json::from_str(&config[..]) {
+        let calc_fns: Vec<CalcFn> = match serde_json::from_str(&self.transformation_cfg) {
             Ok(value) => value,
             Err(error) => {
-                warn!(
-                    "Unable to parse transformation config '{}': {}",
-                    &self.transformation_cfg_path, error
-                );
-                return (Vec::new(), HashSet::new(), new_params);
+                warn!("Unable to parse transformation config: {}", error);
+                return (Vec::new(), HashSet::new(), new_params, Vec::new());
             }
         };
 
         let mut timestamps = HashSet::new();
         let mut precalc_fns: Vec<_> = Vec::new();
+        let mut delay_buffers: Vec<(String, DelayBufferState)> = Vec::new();
+
         for func in calc_fns.into_iter() {
             let name: String = func.name;
 
@@ -717,6 +739,16 @@ impl VTubeStudioPlugin {
                 new_params.push_back(Message::text(param_req_msg));
             }
 
+            // Check if this is a delay buffer parameter
+            if let Some(db_config) = func.delay_buffer {
+                info!(
+                    "  → delay buffer referencing '{}' (smoothing={}, delay={})",
+                    db_config.ref_param, db_config.smoothing, db_config.delay_count
+                );
+                delay_buffers.push((name, DelayBufferState::new(db_config)));
+                continue;
+            }
+
             let local_timestamps = self.extract_wave_pingpong_numbers(&func.func);
             timestamps = timestamps.union(&local_timestamps).cloned().collect();
 
@@ -735,6 +767,6 @@ impl VTubeStudioPlugin {
         }
 
         info!("Tranformation config loaded");
-        (precalc_fns, timestamps, new_params)
+        (precalc_fns, timestamps, new_params, delay_buffers)
     }
 }

@@ -140,6 +140,8 @@ export component App inherits Window {
     preferred-height: 380px;
     background: #141422;
 
+    in-out property<bool> show-about: false;
+    in-out property<string> about-text;
     in-out property<int> preset-index: 0;
     in-out property<string> phone-ip: "127.0.0.1";
     in-out property<int> tracking-type-index: 0;
@@ -164,6 +166,32 @@ export component App inherits Window {
     VerticalLayout {
         padding: 12px;
         spacing: 10px;
+
+        // ── Header ──
+        HorizontalLayout {
+            alignment: space-between;
+            Text {
+                text: "SnenkBridge";
+                color: #8888bb;
+                font-size: 14px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: about-touch.has-hover ? 46px : 44px;
+                height: 20px;
+                about-touch := TouchArea {
+                    clicked => { root.show-about = !root.show-about; }
+                }
+                Text {
+                    text: "About";
+                    color: about-touch.has-hover ? #8888bb : #555570;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
 
         // ── Source card ──
         Card {
@@ -269,8 +297,8 @@ export component App inherits Window {
                 FieldLabel { text: "Preset"; }
                 StyledCombo {
                     model: root.has-custom-preset
-                        ? ["Default", "VBridger Compatible", "Custom"]
-                        : ["Default", "VBridger Compatible"];
+                        ? ["Default", "Maruseu VBridger", "Maruseu Enhanced", "Custom"]
+                        : ["Default", "Maruseu VBridger", "Maruseu Enhanced"];
                     current-index <=> root.preset-index;
                     enabled: !root.target-active;
                     horizontal-stretch: 1;
@@ -287,13 +315,6 @@ export component App inherits Window {
                     hover-border: #6c6cb5;
                     clicked => { root.import-preset(); }
                 }
-            }
-
-            // Preset credit
-            Text {
-                text: "Presets by Maruseu — github.com/maruseu/VitaminsPresets";
-                color: #444466;
-                font-size: 10px;
             }
 
             HorizontalLayout {
@@ -348,6 +369,87 @@ export component App inherits Window {
             color: #e05a5a;
             font-size: 12px;
             horizontal-alignment: center;
+        }
+    }
+
+    // ── About overlay ──
+    if root.show-about : Rectangle {
+        background: #141422ee;
+        TouchArea {
+            clicked => { root.show-about = false; }
+        }
+
+        Card {
+            x: 24px;
+            y: 24px;
+            width: parent.width - 48px;
+            height: parent.height - 48px;
+
+            VerticalLayout {
+                padding: 0;
+                spacing: 10px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "About SnenkBridge";
+                        color: #c8c8e0;
+                        font-size: 15px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                    Btn {
+                        label: "X";
+                        width: 28px;
+                        height: 28px;
+                        base-bg: #2a2a48;
+                        hover-bg: #6b2a2a;
+                        base-border: #3d3d5c;
+                        hover-border: #994444;
+                        clicked => { root.show-about = false; }
+                    }
+                }
+
+                Flickable {
+                    viewport-height: about-content.preferred-height;
+                    about-content := VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "github.com/FaeyUmbrea/SnenkBridge";
+                            color: #6c6cb5;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+
+                        Text {
+                            text: "Presets";
+                            color: #8888aa;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "Maruseu VBridger and Maruseu Enhanced presets based on presets by Maruseu (github.com/maruseu/VitaminsPresets), included with permission. These presets are not covered by the project's GPL license.";
+                            color: #777799;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+
+                        Text {
+                            text: "Dependencies";
+                            color: #8888aa;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: root.about-text;
+                            color: #555570;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
         }
     }
 }

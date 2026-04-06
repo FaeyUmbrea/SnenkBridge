@@ -1,13 +1,13 @@
 [
   {
-    "name": "FaceAngleY",
-    "func": "- HeadRotY",
+    "name": "FaceAngleX",
+    "func": "HeadRotY",
     "min": -40.0,
     "max": 40.0,
     "defaultValue": 0.0
   },
   {
-    "name": "FaceAngleX",
+    "name": "FaceAngleY",
     "func": "( - ((-HeadRotX * ((90 - math::abs(HeadRotY)) / 90)) + (-HeadRotZ * (HeadRotY / 45))))",
     "min": -40.0,
     "max": 40.0,
@@ -197,14 +197,14 @@
   },
   {
     "name": "BodyAngleX",
-    "func": "- HeadRotY * 1.5",
+    "func": "HeadRotY * 1.5",
     "min": -40.0,
     "max": 40.0,
     "defaultValue": 0.0
   },
   {
     "name": "BodyAngleY",
-    "func": "- ( HeadRotX * 1.5)  + ( (EyeBlinkLeft + EyeBlinkRight) * - 1)",
+    "func": "( HeadRotX * 1.5)  + ( (EyeBlinkLeft + EyeBlinkRight) * - 1)",
     "min": -40.0,
     "max": 40.0,
     "defaultValue": 0.0

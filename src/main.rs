@@ -54,14 +54,6 @@ struct Cli {
         help = "The time in milliseconds to wait before changing FaceFound to 0. Default: 3000"
     )]
     face_search_timeout: u64,
-    #[arg(
-        short = 'd',
-        long,
-        default_value_t = 0,
-        hide_default_value = true,
-        help = "Optional delay for config reloading in milliseconds. Default: 0 (disabled)"
-    )]
-    config_reload_delay: u64,
     #[arg(long, default_value = "localhost", help = "VTube Studio IP address")]
     vts_ip: String,
     #[arg(long, default_value = "8001", help = "VTube Studio API port")]
@@ -122,8 +114,12 @@ fn run_convert(input: PathBuf, output: Option<PathBuf>) {
 }
 
 fn run_bridge(cli: Cli) {
-    let config = cli.config.unwrap_or_else(|| {
+    let config_path = cli.config.unwrap_or_else(|| {
         eprintln!("Error: --config is required for bridge mode");
+        std::process::exit(1);
+    });
+    let config = std::fs::read_to_string(&config_path).unwrap_or_else(|e| {
+        eprintln!("Error reading config {}: {}", config_path, e);
         std::process::exit(1);
     });
     let phone_ip = cli.phone_ip.unwrap_or_else(|| {
@@ -151,7 +147,6 @@ fn run_bridge(cli: Cli) {
         VTubeStudioPlugin::new(
             receiver,
             config,
-            cli.config_reload_delay,
             cli.face_search_timeout,
             cli.vts_ip,
             cli.vts_port,

@@ -21,13 +21,16 @@ use std::{
 
 slint::include_modules!();
 
+include!(concat!(env!("OUT_DIR"), "/credits.rs"));
+
 // ─── Embedded presets ───────────────────────────────────────────────
 // Presets by Maruseu (https://github.com/maruseu/VitaminsPresets),
 // included with permission. These are NOT covered by the project's
 // GPL license and are NOT republished under GPL.
 
 const PRESET_DEFAULT: &str = include_str!("../presets/default.json");
-const PRESET_VBRIDGER_COMPATIBLE: &str = include_str!("../presets/vbridger_compatible.json");
+const PRESET_MARUSEU_VBRIDGER: &str = include_str!("../presets/maruseu_vbridger.json");
+const PRESET_MARUSEU_ENHANCED: &str = include_str!("../presets/maruseu_enhanced.json");
 
 // ─── Colors ────────────────────────────────────────────────────────
 
@@ -132,8 +135,9 @@ fn read_settings_from_ui(ui: &App) -> Settings {
 fn resolve_preset_config(index: i32) -> Result<String, String> {
     match index {
         0 => Ok(PRESET_DEFAULT.to_string()),
-        1 => Ok(PRESET_VBRIDGER_COMPATIBLE.to_string()),
-        2 => {
+        1 => Ok(PRESET_MARUSEU_VBRIDGER.to_string()),
+        2 => Ok(PRESET_MARUSEU_ENHANCED.to_string()),
+        3 => {
             let path = custom_preset_path();
             std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read custom preset: {}", e))
@@ -202,6 +206,7 @@ fn main() {
     let has_custom = custom_preset_path().is_file();
 
     app.set_preset_index(settings.preset_index);
+    app.set_about_text(DEPENDENCY_CREDITS.into());
     app.set_phone_ip(settings.phone_ip.into());
     app.set_tracking_type_index(settings.tracking_type_index);
     app.set_face_search_timeout(settings.face_search_timeout.into());
@@ -244,7 +249,7 @@ fn main() {
                             match result {
                                 Ok(_) => {
                                     ui.set_has_custom_preset(true);
-                                    ui.set_preset_index(2); // Switch to Custom
+                                    ui.set_preset_index(3); // Switch to Custom
                                     ui.set_error_text("".into());
                                     save_settings(&read_settings_from_ui(&ui));
                                 }
@@ -347,7 +352,6 @@ fn main() {
                 return;
             }
 
-            // Resolve the preset config to a temp file for the plugin
             let preset_index = ui.get_preset_index();
             let config_json = match resolve_preset_config(preset_index) {
                 Ok(json) => json,
@@ -356,14 +360,6 @@ fn main() {
                     return;
                 }
             };
-
-            // Write the active config to a temp file in the app dir
-            let active_config_path = app_dir().join("active_config.json");
-            if let Err(e) = std::fs::write(&active_config_path, &config_json) {
-                ui.set_error_text(format!("Failed to write config: {}", e).into());
-                return;
-            }
-            let transform_path = active_config_path.to_string_lossy().to_string();
 
             ui.set_error_text("".into());
             ui.set_target_status("Connecting...".into());
@@ -384,8 +380,7 @@ fn main() {
             rt_handle.spawn_blocking(move || {
                 VTubeStudioPlugin::new(
                     receiver,
-                    transform_path,
-                    0,
+                    config_json,
                     face_search_timeout,
                     vts_ip,
                     vts_port,

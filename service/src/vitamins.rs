@@ -26,15 +26,31 @@ pub struct VitaminsParam {
     pub param_name: String,
 }
 
+/// Delay buffer configuration for parameters that smooth/delay another parameter's output.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DelayBuffer {
+    pub ref_param: String,
+    pub smoothing: f64,
+    pub delay_count: usize,
+    pub in_min: f64,
+    pub in_max: f64,
+    pub out_min: f64,
+    pub out_max: f64,
+}
+
 /// SnenkBridge output format
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CalcFn {
     pub name: String,
+    #[serde(default)]
     pub func: String,
     pub min: f64,
     pub max: f64,
     pub default_value: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delay_buffer: Option<DelayBuffer>,
 }
 
 /// Converts a Vitamins JSON config string into a SnenkBridge JSON config string.
@@ -48,58 +64,66 @@ pub fn convert_vitamins_config(input: &str) -> Result<String, String> {
         serde_json::from_str(input).map_err(|e| format!("Failed to parse Vitamins config: {e}"))?;
 
     // First pass: convert all parameters
-    let mut calc_fns: Vec<CalcFn> = vb
+    let calc_fns: Vec<CalcFn> = vb
         .custom_param
         .into_iter()
         .filter(|p| p.send_flag == "true")
         .map(convert_param)
         .collect();
 
-    // Second pass: resolve delay buffer references.
-    // A delay buffer produces a func like "@@ref:FaceAngleX" which is a placeholder.
-    // We look up the referenced parameter by name and inline its expression.
-    let resolved_map: HashMap<String, String> = calc_fns
-        .iter()
-        .filter(|f| !f.func.starts_with("@@ref:"))
-        .map(|f| (f.name.clone(), f.func.clone()))
-        .collect();
-
-    for calc_fn in &mut calc_fns {
-        if let Some(ref_name) = calc_fn.func.strip_prefix("@@ref:") {
-            calc_fn.func = resolved_map
-                .get(ref_name)
-                .cloned()
-                .unwrap_or_else(|| ref_name.to_string());
-        }
-    }
-
-    // Third pass: apply Vitamins→VTS naming fixups.
-    // Vitamins uses different axis conventions from VTube Studio.
-    apply_vts_fixups(&mut calc_fns);
+    // No post-processing needed — delay buffers are emitted as DelayBuffer
+    // configs and handled at runtime by the VTS plugin.
 
     serde_json::to_string_pretty(&calc_fns).map_err(|e| format!("Failed to serialize output: {e}"))
 }
 
+/// Maps Vitamins output parameter names to VTube Studio conventions
+/// where they differ.
+fn map_output_name(name: &str) -> String {
+    match name {
+        "Eye_Squint_L" => "EyeSquintL".to_string(),
+        "Eye_Squint_R" => "EyeSquintR".to_string(),
+        _ => name.to_string(),
+    }
+}
+
 fn convert_param(param: VitaminsParam) -> CalcFn {
-    let name = param
+    let raw_name = param
         .param_name
         .strip_prefix("param_")
-        .unwrap_or(&param.param_name)
-        .to_string();
+        .unwrap_or(&param.param_name);
+    let name = map_output_name(raw_name);
 
-    let (func, min, max) = if param.param_type == "complex" {
-        convert_complex_func(&param.func, param.min, param.max)
+    if param.param_type == "complex" {
+        let result = convert_complex_func(&param.func, param.min, param.max);
+        match result {
+            ComplexResult::Bezier { func, min, max } => CalcFn {
+                name,
+                func,
+                min,
+                max,
+                default_value: param.default,
+                delay_buffer: None,
+            },
+            ComplexResult::DelayBuffer(db) => CalcFn {
+                name,
+                func: String::new(),
+                min: db.out_min,
+                max: db.out_max,
+                default_value: param.default,
+                delay_buffer: Some(db),
+            },
+        }
     } else {
         let func = convert_simple_func(&param.func);
-        (func, param.min, param.max)
-    };
-
-    CalcFn {
-        name,
-        func,
-        min,
-        max,
-        default_value: param.default,
+        CalcFn {
+            name,
+            func,
+            min: param.min,
+            max: param.max,
+            default_value: param.default,
+            delay_buffer: None,
+        }
     }
 }
 
@@ -120,105 +144,17 @@ fn strip_block_comments(input: &str) -> String {
     result
 }
 
-/// Applies Vitamins→VTube Studio naming and axis fixups.
-///
-/// Vitamins uses different conventions from VTS:
-/// - FaceAngleX/Y are swapped (Vitamins X = yaw, VTS X = pitch)
-/// - FaceAngleY (yaw) needs negation for correct direction
-/// - BodyAngleX/Y need negation
-/// - Eye_Squint_L/R should be EyeSquintL/R
-fn apply_vts_fixups(calc_fns: &mut Vec<CalcFn>) {
-    // Swap FaceAngleX ↔ FaceAngleY names (Vitamins X = yaw, VTS X = pitch)
-    let mut x_idx = None;
-    let mut y_idx = None;
-    for (i, f) in calc_fns.iter().enumerate() {
-        if f.name == "FaceAngleX" {
-            x_idx = Some(i);
-        }
-        if f.name == "FaceAngleY" {
-            y_idx = Some(i);
-        }
-    }
-    match (x_idx, y_idx) {
-        (Some(xi), Some(yi)) => {
-            // Both present — swap names, min, max, and default_value
-            let x_name = calc_fns[xi].name.clone();
-            let x_min = calc_fns[xi].min;
-            let x_max = calc_fns[xi].max;
-            let x_default = calc_fns[xi].default_value;
-            calc_fns[xi].name = calc_fns[yi].name.clone();
-            calc_fns[xi].min = calc_fns[yi].min;
-            calc_fns[xi].max = calc_fns[yi].max;
-            calc_fns[xi].default_value = calc_fns[yi].default_value;
-            calc_fns[yi].name = x_name;
-            calc_fns[yi].min = x_min;
-            calc_fns[yi].max = x_max;
-            calc_fns[yi].default_value = x_default;
-        }
-        (Some(xi), None) => {
-            // Only X present — rename to Y (Vitamins X = VTS Y)
-            calc_fns[xi].name = "FaceAngleY".to_string();
-        }
-        (None, Some(yi)) => {
-            // Only Y present — rename to X (Vitamins Y = VTS X)
-            calc_fns[yi].name = "FaceAngleX".to_string();
-        }
-        _ => {}
-    }
-
-    for calc_fn in calc_fns.iter_mut() {
-        match calc_fn.name.as_str() {
-            // Negate FaceAngleY (was FaceAngleX in Vitamins, contains yaw/headRotY)
-            "FaceAngleY" => {
-                calc_fn.func = negate_expr(&calc_fn.func);
-            }
-            // Negate BodyAngleX and BodyAngleY for correct VTS direction
-            "BodyAngleX" | "BodyAngleY" => {
-                calc_fn.func = negate_expr(&calc_fn.func);
-            }
-            _ => {}
-        }
-
-        // Fix Eye_Squint_L/R naming
-        if calc_fn.name == "Eye_Squint_L" {
-            calc_fn.name = "EyeSquintL".to_string();
-        }
-        if calc_fn.name == "Eye_Squint_R" {
-            calc_fn.name = "EyeSquintR".to_string();
-        }
-    }
-}
-
-/// Negates an expression by prepending `- ` or simplifying double negation.
-fn negate_expr(expr: &str) -> String {
-    let trimmed = expr.trim();
-
-    // If expression starts with "( - ((" pattern (double negation from Vitamins),
-    // simplify by removing the outer negation
-    if trimmed.starts_with("( - ((") || trimmed.starts_with("( -((" ) {
-        // Remove "( - (" prefix and matching trailing ")"
-        let inner = trimmed
-            .strip_prefix("( - (")
-            .or_else(|| trimmed.strip_prefix("( -("))
-            .unwrap_or(trimmed);
-        if let Some(inner) = inner.strip_suffix(")") {
-            // Also need to remove inner negations on variables: (-headRotX → (headRotX
-            let simplified = inner
-                .replace("(-", "(")
-                .replace("( -", "(");
-            return format!("({simplified})");
-        }
-    }
-
-    format!("- {trimmed}")
+enum ComplexResult {
+    Bezier { func: String, min: f64, max: f64 },
+    DelayBuffer(DelayBuffer),
 }
 
 /// Extracts the core expression from a complex Vitamins function.
 ///
 /// Complex functions follow one of two patterns:
 /// 1. Bezier curve: `let result = <expr>\n let inmin=...` — extract expr, use outmin/outmax
-/// 2. Delay buffer: `let p=ref.ParamName;` — extract the ref and convert
-fn convert_complex_func(func: &str, fallback_min: f64, fallback_max: f64) -> (String, f64, f64) {
+/// 2. Delay buffer: `let p=ref.ParamName;` — extract the ref and emit a DelayBuffer config
+fn convert_complex_func(func: &str, fallback_min: f64, fallback_max: f64) -> ComplexResult {
     // Strip block comments before processing
     let cleaned = strip_block_comments(func);
     let lines: Vec<&str> = cleaned.lines().collect();
@@ -227,12 +163,17 @@ fn convert_complex_func(func: &str, fallback_min: f64, fallback_max: f64) -> (St
     for line in &lines {
         let trimmed = line.trim();
         if trimmed.starts_with("let p=ref.") || trimmed.starts_with("let p = ref.") {
-            return convert_delay_buffer_func(&lines, fallback_min, fallback_max);
+            return ComplexResult::DelayBuffer(convert_delay_buffer_func(
+                &lines,
+                fallback_min,
+                fallback_max,
+            ));
         }
     }
 
     // Bezier curve pattern: extract core expression and output range
-    convert_bezier_func(&lines, fallback_min, fallback_max)
+    let (func, min, max) = convert_bezier_func(&lines, fallback_min, fallback_max);
+    ComplexResult::Bezier { func, min, max }
 }
 
 /// Handles bezier curve complex functions.
@@ -285,8 +226,12 @@ fn convert_delay_buffer_func(
     lines: &[&str],
     fallback_min: f64,
     fallback_max: f64,
-) -> (String, f64, f64) {
+) -> DelayBuffer {
     let mut ref_param = String::new();
+    let mut smoothing = 1.0;
+    let mut delay_count: usize = 1;
+    let mut inmin = fallback_min;
+    let mut inmax = fallback_max;
     let mut outmin = fallback_min;
     let mut outmax = fallback_max;
 
@@ -302,6 +247,45 @@ fn convert_delay_buffer_func(
                 .to_string();
         }
 
+        // Extract smoothing: "let s=2.0;"
+        if trimmed.starts_with("let s=") || trimmed.starts_with("let s =") {
+            let val_str = trimmed
+                .split("//")
+                .next()
+                .unwrap_or(trimmed)
+                .trim()
+                .trim_end_matches(';')
+                .trim_start_matches("let s=")
+                .trim_start_matches("let s =")
+                .trim();
+            if let Ok(v) = val_str.parse::<f64>() {
+                smoothing = v;
+            }
+        }
+
+        // Extract delay count: "let dC=8;"
+        if trimmed.starts_with("let dC=") || trimmed.starts_with("let dC =") {
+            let val_str = trimmed
+                .split("//")
+                .next()
+                .unwrap_or(trimmed)
+                .trim()
+                .trim_end_matches(';')
+                .trim_start_matches("let dC=")
+                .trim_start_matches("let dC =")
+                .trim();
+            if let Ok(v) = val_str.parse::<usize>() {
+                delay_count = v;
+            }
+        }
+
+        if trimmed.starts_with("let inmin=") {
+            if let Some((min_val, max_val)) = parse_range_line(trimmed, "inmin", "inmax") {
+                inmin = min_val;
+                inmax = max_val;
+            }
+        }
+
         if trimmed.starts_with("let outmin=") {
             if let Some((min_val, max_val)) = parse_range_line(trimmed, "outmin", "outmax") {
                 outmin = min_val;
@@ -310,11 +294,15 @@ fn convert_delay_buffer_func(
         }
     }
 
-    // The delay buffer is a smoothing filter on a referenced parameter.
-    // Output a placeholder that convert_vitamins_config resolves by inlining
-    // the referenced parameter's expression.
-    let func = format!("@@ref:{ref_param}");
-    (func, outmin, outmax)
+    DelayBuffer {
+        ref_param,
+        smoothing,
+        delay_count,
+        in_min: inmin,
+        in_max: inmax,
+        out_min: outmin,
+        out_max: outmax,
+    }
 }
 
 /// Parses a line like "let outmin=-30.0, outmax=30.0;  //output range"
@@ -535,6 +523,16 @@ fn build_variable_mapping() -> HashMap<String, String> {
 mod tests {
     use super::*;
 
+    /// Helper to unwrap a ComplexResult::Bezier into (func, min, max) tuple for tests.
+    fn unwrap_bezier(result: ComplexResult) -> (String, f64, f64) {
+        match result {
+            ComplexResult::Bezier { func, min, max } => (func, min, max),
+            ComplexResult::DelayBuffer(db) => {
+                panic!("Expected Bezier, got DelayBuffer referencing {}", db.ref_param)
+            }
+        }
+    }
+
     #[test]
     fn test_simple_expression_conversion() {
         let func = "return headPosX * - 1//+((ref.FaceAngleX+30)/60*8)";
@@ -563,7 +561,7 @@ let inmin=-40.0, inmax=40;         //input range
 let outmin=-30.0, outmax=30.0;     //output range
 let x1=.54,y1=.03;
 let rest = "bezier stuff";"#;
-        let (expr, min, max) = convert_complex_func(func, -40.0, 40.0);
+        let (expr, min, max) = unwrap_bezier(convert_complex_func(func, -40.0, 40.0));
         assert_eq!(expr, "HeadRotY");
         assert_eq!(min, -30.0);
         assert_eq!(max, 30.0);
@@ -577,11 +575,19 @@ let dC=8;        //delay counter
 let inmin=-30.0, inmax=30;         //input range
 let outmin=-10.0, outmax=10.0;     //output range
 stuff"#;
-        let (expr, min, max) = convert_complex_func(func, -30.0, 30.0);
-        // First pass returns placeholder; convert_vitamins_config resolves it
-        assert_eq!(expr, "@@ref:FaceAngleX");
-        assert_eq!(min, -10.0);
-        assert_eq!(max, 10.0);
+        let result = convert_complex_func(func, -30.0, 30.0);
+        match result {
+            ComplexResult::DelayBuffer(db) => {
+                assert_eq!(db.ref_param, "FaceAngleX");
+                assert_eq!(db.smoothing, 2.0);
+                assert_eq!(db.delay_count, 8);
+                assert_eq!(db.in_min, -30.0);
+                assert_eq!(db.in_max, 30.0);
+                assert_eq!(db.out_min, -10.0);
+                assert_eq!(db.out_max, 10.0);
+            }
+            _ => panic!("Expected DelayBuffer"),
+        }
     }
 
     #[test]
@@ -832,7 +838,7 @@ let inmin=-40.0, inmax=40;         //input range
 let outmin=-30.0, outmax=30.0;     //output range
 let x1=.65,y1=.0;     // bezier control point 1
 let x2=1-x1,y2=1-y1;    // bezier control point 2"#;
-        let (expr, min, max) = convert_complex_func(func, -30.0, 30.0);
+        let (expr, min, max) = unwrap_bezier(convert_complex_func(func, -30.0, 30.0));
         assert_eq!(
             expr,
             "( - ((-HeadRotX * ((90 - math::abs(HeadRotY)) / 90)) + (-HeadRotZ * (HeadRotY / 45))))"
@@ -846,7 +852,7 @@ let x2=1-x1,y2=1-y1;    // bezier control point 2"#;
         let func = r#"let result = ((headRotZ * ((90 - Math.abs(headRotY)) / 90)) - (headRotX * (headRotY / 45)))
 let inmin=-30.0, inmax=30;         //input range
 let outmin=-30.0, outmax=30.0;     //output range"#;
-        let (expr, min, max) = convert_complex_func(func, -30.0, 30.0);
+        let (expr, min, max) = unwrap_bezier(convert_complex_func(func, -30.0, 30.0));
         assert_eq!(
             expr,
             "((HeadRotZ * ((90 - math::abs(HeadRotY)) / 90)) - (HeadRotX * (HeadRotY / 45)))"
@@ -862,7 +868,7 @@ let inmin=0.0, inmax=1.0;         //input range
 let outmin=0.0, outmax=1.0;     //output range
 let x1=.24,y1=.65;     // bezier control point 1
 let x2=.62,y2=1.0;    // bezier control point 2"#;
-        let (expr, min, max) = convert_complex_func(func, 0.0, 1.0);
+        let (expr, min, max) = unwrap_bezier(convert_complex_func(func, 0.0, 1.0));
         assert_eq!(
             expr,
             "((JawOpen - MouthClose) - ((MouthRollUpper + MouthRollLower) * .2) + (MouthFunnel * .2))"
@@ -876,7 +882,7 @@ let x2=.62,y2=1.0;    // bezier control point 2"#;
         let func = r#"let result = (((mouthUpperUp_R + mouthUpperUp_L + mouthLowerDown_R + mouthLowerDown_L) / 1.8) - (mouthRollLower + mouthRollUpper)) * (1 - tongueOut)
 let inmin=-1.3, inmax=1.3;         //input range
 let outmin=-1.3, outmax=1.3;     //output range"#;
-        let (expr, min, max) = convert_complex_func(func, -1.3, 1.3);
+        let (expr, min, max) = unwrap_bezier(convert_complex_func(func, -1.3, 1.3));
         assert_eq!(
             expr,
             "(((MouthUpperUpRight + MouthUpperUpLeft + MouthLowerDownRight + MouthLowerDownLeft) / 1.8) - (MouthRollLower + MouthRollUpper)) * (1 - TongueOut)"
@@ -890,7 +896,7 @@ let outmin=-1.3, outmax=1.3;     //output range"#;
         let func = r#"let result = headRotY
 let inmin=-40.0, inmax=40;         //input range
 let outmin=-40.0, outmax=40.0;     //output range"#;
-        let (expr, min, max) = convert_complex_func(func, -30.0, 30.0);
+        let (expr, min, max) = unwrap_bezier(convert_complex_func(func, -30.0, 30.0));
         assert_eq!(expr, "HeadRotY");
         assert_eq!(min, -40.0);
         assert_eq!(max, 40.0);
@@ -903,10 +909,16 @@ let s=2.0;        //smoothing
 let dC=8;        //delay counter
 let inmin=-30.0, inmax=30;         //input range
 let outmin=-10.0, outmax=10.0;     //output range"#;
-        let (expr, min, max) = convert_complex_func(func, -30.0, 30.0);
-        assert_eq!(expr, "@@ref:FaceAngleY");
-        assert_eq!(min, -10.0);
-        assert_eq!(max, 10.0);
+        match convert_complex_func(func, -30.0, 30.0) {
+            ComplexResult::DelayBuffer(db) => {
+                assert_eq!(db.ref_param, "FaceAngleY");
+                assert_eq!(db.smoothing, 2.0);
+                assert_eq!(db.delay_count, 8);
+                assert_eq!(db.out_min, -10.0);
+                assert_eq!(db.out_max, 10.0);
+            }
+            _ => panic!("Expected DelayBuffer"),
+        }
     }
 
     #[test]
@@ -916,48 +928,64 @@ let s=2.0;        //smoothing
 let dC=4;        //delay counter
 let inmin=-30.0, inmax=30;         //input range
 let outmin=-10.0, outmax=10.0;     //output range"#;
-        let (expr, min, max) = convert_complex_func(func, -40.0, 40.0);
-        assert_eq!(expr, "@@ref:FaceAngleZ");
-        assert_eq!(min, -10.0);
-        assert_eq!(max, 10.0);
+        match convert_complex_func(func, -40.0, 40.0) {
+            ComplexResult::DelayBuffer(db) => {
+                assert_eq!(db.ref_param, "FaceAngleZ");
+                assert_eq!(db.delay_count, 4);
+                assert_eq!(db.out_min, -10.0);
+                assert_eq!(db.out_max, 10.0);
+            }
+            _ => panic!("Expected DelayBuffer"),
+        }
     }
 
     #[test]
     fn test_complex_delay_buffer_face_position_y() {
         let func = "let p=ref.FaceAngleY;\nlet s=2.0;\nlet dC=8;\nlet inmin=-30.0, inmax=30;\nlet outmin=-10.0, outmax=10.0;";
-        let (expr, min, max) = convert_complex_func(func, -15.0, 15.0);
-        assert_eq!(expr, "@@ref:FaceAngleY");
-        assert_eq!(min, -10.0);
-        assert_eq!(max, 10.0);
+        match convert_complex_func(func, -15.0, 15.0) {
+            ComplexResult::DelayBuffer(db) => {
+                assert_eq!(db.ref_param, "FaceAngleY");
+                assert_eq!(db.out_min, -10.0);
+                assert_eq!(db.out_max, 10.0);
+            }
+            _ => panic!("Expected DelayBuffer"),
+        }
     }
 
     #[test]
-    fn test_delay_buffer_resolved_in_full_conversion() {
-        // When going through convert_vitamins_config, delay buffer refs get resolved
-        // and VTS fixups are applied (FaceAngleX→FaceAngleY swap, BodyAngleX negation)
+    fn test_delay_buffer_in_full_conversion() {
+        // Delay buffers are emitted as DelayBuffer configs in the JSON output
         let input = r#"{"version":"0.9.7","customParam":[
             {"func":"return headRotY * 1.5","max":40,"min":-40,"default":0,"type":"simple","sendFlag":"true","paramName":"param_FaceAngleX"},
             {"func":"let p=ref.FaceAngleX;\nlet s=2.0;\nlet dC=8;\nlet inmin=-30.0, inmax=30;\nlet outmin=-10.0, outmax=10.0;","max":10,"min":-10,"default":0,"type":"complex","sendFlag":"true","paramName":"param_BodyAngleX"}
         ],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
         let output = convert_vitamins_config(input).unwrap();
         let parsed: Vec<CalcFn> = serde_json::from_str(&output).unwrap();
-        // FaceAngleX renamed to FaceAngleY by VTS fixup (axis swap)
-        assert_eq!(parsed[0].name, "FaceAngleY");
-        // FaceAngleY expression negated by VTS fixup
-        assert_eq!(parsed[0].func, "- HeadRotY * 1.5");
-        // BodyAngleX resolves ref and gets negated
+        // Normal param preserved as-is
+        assert_eq!(parsed[0].name, "FaceAngleX");
+        assert_eq!(parsed[0].func, "HeadRotY * 1.5");
+        assert!(parsed[0].delay_buffer.is_none());
+        // Delay buffer param has DelayBuffer config
         assert_eq!(parsed[1].name, "BodyAngleX");
-        assert_eq!(parsed[1].func, "- HeadRotY * 1.5");
+        assert!(parsed[1].func.is_empty());
+        let db = parsed[1].delay_buffer.as_ref().unwrap();
+        assert_eq!(db.ref_param, "FaceAngleX");
+        assert_eq!(db.smoothing, 2.0);
+        assert_eq!(db.delay_count, 8);
     }
 
     #[test]
     fn test_block_comment_stripped() {
         let func = "/*let result = headPosY+((ref.FaceAngleY+30)/60*8)\nreturn result\n*/\nlet p=ref.FaceAngleY;\nlet s=2.0;\nlet dC=8;\nlet inmin=-30.0, inmax=30;\nlet outmin=-10.0, outmax=10.0;";
-        let (expr, min, max) = convert_complex_func(func, -15.0, 15.0);
         // Block comment is stripped, delay buffer pattern is found
-        assert_eq!(expr, "@@ref:FaceAngleY");
-        assert_eq!(min, -10.0);
-        assert_eq!(max, 10.0);
+        match convert_complex_func(func, -15.0, 15.0) {
+            ComplexResult::DelayBuffer(db) => {
+                assert_eq!(db.ref_param, "FaceAngleY");
+                assert_eq!(db.out_min, -10.0);
+                assert_eq!(db.out_max, 10.0);
+            }
+            _ => panic!("Expected DelayBuffer"),
+        }
     }
 
     // --- replace_identifier ---
@@ -1210,16 +1238,15 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
         assert_eq!(parsed.len(), 4);
 
-        // FaceAngleX renamed to FaceAngleY (axis swap), expression negated
-        assert_eq!(parsed[0].name, "FaceAngleY");
-        assert_eq!(parsed[0].func, "- HeadRotY");
+        // Names preserved as-is from VPS (no axis swapping or renaming)
+        assert_eq!(parsed[0].name, "FaceAngleX");
+        assert_eq!(parsed[0].func, "HeadRotY");
         assert_eq!(parsed[0].min, -30.0);
         assert_eq!(parsed[0].max, 30.0);
 
         assert_eq!(parsed[1].name, "FacePositionX");
         assert_eq!(parsed[1].func, "HeadPosX * - 1");
 
-        // Eye_Squint_L renamed to EyeSquintL
         assert_eq!(parsed[2].name, "EyeSquintL");
         assert_eq!(parsed[2].func, "(EyeSquintLeft)");
 
