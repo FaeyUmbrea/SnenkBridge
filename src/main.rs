@@ -24,7 +24,7 @@ fn parse_tracking_client_type(input: &str) -> Result<TrackingClientType, String>
     match input.to_lowercase().as_str() {
         "vts" | "vtubestudio" => Ok(TrackingClientType::VTubeStudio),
         "ifm" | "ifacialmocap" => Ok(TrackingClientType::IFacialMocap),
-        _ => Err(format!("Invalid tracking client type: {}", input)),
+        _ => Err(format!("Invalid tracking client type: {input}")),
     }
 }
 
@@ -62,7 +62,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Convert a Vitamins .vps preset file to SnenkBridge JSON format
+    /// Convert a Vitamins .vps preset file to `SnenkBridge` JSON format
     Convert {
         /// Path to the input .vps file
         input: PathBuf,
@@ -77,7 +77,7 @@ fn main() {
 
     match cli.command {
         Some(Commands::Convert { input, output }) => {
-            run_convert(input, output);
+            run_convert(&input, output);
         }
         None => {
             run_bridge(cli);
@@ -85,13 +85,13 @@ fn main() {
     }
 }
 
-fn run_convert(input: PathBuf, output: Option<PathBuf>) {
+fn run_convert(input: &std::path::Path, output: Option<PathBuf>) {
     let output = output.unwrap_or_else(|| input.with_extension("snek"));
 
-    let content = match std::fs::read_to_string(&input) {
+    let content = match std::fs::read_to_string(input) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Error reading {}: {}", input.display(), e);
+            eprintln!("Error reading {}: {e}", input.display());
             std::process::exit(1);
         }
     };
@@ -99,7 +99,7 @@ fn run_convert(input: PathBuf, output: Option<PathBuf>) {
     let preset = match vitamins::convert_vitamins_to_preset(&content, true) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Error converting {}: {}", input.display(), e);
+            eprintln!("Error converting {}: {e}", input.display());
             std::process::exit(1);
         }
     };
@@ -107,15 +107,15 @@ fn run_convert(input: PathBuf, output: Option<PathBuf>) {
     let json = match serde_json::to_string_pretty(&preset) {
         Ok(j) => j,
         Err(e) => {
-            eprintln!("Error serializing: {}", e);
+            eprintln!("Error serializing: {e}");
             std::process::exit(1);
         }
     };
 
     match std::fs::write(&output, &json) {
-        Ok(_) => println!("Converted {} -> {}", input.display(), output.display()),
+        Ok(()) => println!("Converted {} -> {}", input.display(), output.display()),
         Err(e) => {
-            eprintln!("Error writing {}: {}", output.display(), e);
+            eprintln!("Error writing {}: {e}", output.display());
             std::process::exit(1);
         }
     }
@@ -127,7 +127,7 @@ fn run_bridge(cli: Cli) {
         std::process::exit(1);
     });
     let config = std::fs::read_to_string(&config_path).unwrap_or_else(|e| {
-        eprintln!("Error reading config {}: {}", config_path, e);
+        eprintln!("Error reading config {config_path}: {e}");
         std::process::exit(1);
     });
     let phone_ip = cli.phone_ip.unwrap_or_else(|| {

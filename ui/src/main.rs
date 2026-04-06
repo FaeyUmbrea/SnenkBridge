@@ -25,7 +25,7 @@ slint::include_modules!();
 
 include!(concat!(env!("OUT_DIR"), "/credits.rs"));
 
-// ─── Embedded presets ───────────────────────────────────────────────
+// Embedded presets
 // Presets by Maruseu (https://github.com/maruseu/VitaminsPresets),
 // included with permission. These are NOT covered by the project's
 // GPL license and are NOT republished under GPL.
@@ -36,7 +36,7 @@ const PRESET_MARUSEU_ENHANCED: &str = include_str!("../presets/maruseu_enhanced.
 
 const BUILTIN_NAMES: [&str; 3] = ["Default", "Maruseu VBridger", "Maruseu Enhanced"];
 
-// ─── Colors ────────────────────────────────────────────────────────
+// Colors
 
 const COLOR_RED: (u8, u8, u8) = (0xcc, 0x44, 0x44);
 const COLOR_YELLOW: (u8, u8, u8) = (0xcc, 0x99, 0x44);
@@ -47,7 +47,7 @@ fn color(rgb: (u8, u8, u8)) -> slint::Color {
     slint::Color::from_argb_u8(255, rgb.0, rgb.1, rgb.2)
 }
 
-// ─── Settings ──────────────────────────────────────────────────────
+// Settings
 
 #[derive(Serialize, Deserialize)]
 struct Settings {
@@ -115,24 +115,31 @@ fn presets_dir() -> std::path::PathBuf {
 fn load_settings() -> Settings {
     let path = settings_path();
     match std::fs::read_to_string(&path) {
-        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
-        Err(_) => Settings::default(),
+        Ok(data) => serde_json::from_str(&data).unwrap_or_else(|e| {
+            log::warn!("Failed to parse settings, using defaults: {e}");
+            Settings::default()
+        }),
+        Err(_) => Settings::default(), // file not found is normal on first run
     }
 }
 
 fn save_settings(settings: &Settings) {
     let path = settings_path();
-    if let Ok(data) = serde_json::to_string_pretty(settings) {
-        let _ = std::fs::write(&path, data);
+    match serde_json::to_string_pretty(settings) {
+        Ok(data) => {
+            if let Err(e) = std::fs::write(&path, data) {
+                log::warn!("Failed to save settings: {e}");
+            }
+        }
+        Err(e) => log::warn!("Failed to serialize settings: {e}"),
     }
 }
 
 fn read_settings_from_ui(ui: &App, preset_list: &[PresetEntry]) -> Settings {
-    let idx = ui.get_preset_index() as usize;
+    let idx = slint_idx(ui.get_preset_index());
     let preset_name = preset_list
         .get(idx)
-        .map(|e| e.name.clone())
-        .unwrap_or_else(default_preset_name);
+        .map_or_else(default_preset_name, |e| e.name.clone());
     Settings {
         preset_name,
         phone_ip: ui.get_phone_ip().to_string(),
@@ -143,7 +150,7 @@ fn read_settings_from_ui(ui: &App, preset_list: &[PresetEntry]) -> Settings {
     }
 }
 
-// ─── Preset management ─────────────────────────────────────────────
+// Preset management
 
 struct PresetEntry {
     name: String,
@@ -199,6 +206,11 @@ fn is_builtin(name: &str) -> bool {
     BUILTIN_NAMES.contains(&name)
 }
 
+/// Convert a Slint i32 combo-box index to usize. Negative values become 0.
+fn slint_idx(index: i32) -> usize {
+    usize::try_from(index).unwrap_or(0)
+}
+
 fn tracking_client_type(index: i32) -> TrackingClientType {
     match index {
         1 => TrackingClientType::IFacialMocap,
@@ -210,7 +222,7 @@ fn timeout_ms(val: &str) -> u64 {
     val.parse::<u64>().unwrap_or(3000)
 }
 
-/// Build a SnekPreset for the given preset name (for export).
+/// Build a `SnekPreset` for the given preset name (for export).
 fn build_snek_preset(name: &str) -> Result<SnekPreset, String> {
     if is_builtin(name) {
         let json = resolve_preset(name)?;
@@ -233,7 +245,7 @@ fn build_snek_preset(name: &str) -> Result<SnekPreset, String> {
     }
 }
 
-// ─── Main ──────────────────────────────────────────────────────────
+// Main
 
 fn main() {
     let log_config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../configs/log_cfg.yml");
@@ -255,7 +267,7 @@ fn main() {
 
     let preset_list: Arc<Mutex<Vec<PresetEntry>>> = Arc::new(Mutex::new(entries));
 
-    app.set_preset_index(saved_index as i32);
+    app.set_preset_index(i32::try_from(saved_index).unwrap_or(0));
     app.set_can_delete_preset(!is_builtin(&settings.preset_name));
     app.set_phone_ip(settings.phone_ip.into());
     app.set_tracking_type_index(settings.tracking_type_index);
@@ -278,11 +290,8 @@ fn main() {
         app.on_settings_changed(move || {
             let Some(ui) = weak.upgrade() else { return };
             let list = preset_list.lock().unwrap();
-            let idx = ui.get_preset_index() as usize;
-            let is_custom = list
-                .get(idx)
-                .map(|e| !is_builtin(&e.name))
-                .unwrap_or(false);
+            let idx = slint_idx(ui.get_preset_index());
+            let is_custom = list.get(idx).is_some_and(|e| !is_builtin(&e.name));
             ui.set_can_delete_preset(is_custom);
             save_settings(&read_settings_from_ui(&ui, &list));
         });
@@ -413,7 +422,7 @@ fn main() {
 
                             match result {
                                 Ok(mut snek) => {
-                                    snek.title = title.clone();
+                                    snek.title.clone_from(&title);
                                     snek.author = author;
                                     snek.description = description;
 
@@ -426,7 +435,9 @@ fn main() {
                                                 .position(|e| e.name == title)
                                                 .unwrap_or(0);
                                             *preset_list.lock().unwrap() = entries;
-                                            ui.set_preset_index(new_idx as i32);
+                                            ui.set_preset_index(
+                                                i32::try_from(new_idx).unwrap_or(0),
+                                            );
                                             ui.set_can_delete_preset(true);
                                             ui.set_error_text("".into());
                                             save_settings(&read_settings_from_ui(
@@ -475,11 +486,10 @@ fn main() {
         app.on_export_preset(move || {
             let Some(ui) = weak.upgrade() else { return };
             let list = preset_list.lock().unwrap();
-            let idx = ui.get_preset_index() as usize;
+            let idx = slint_idx(ui.get_preset_index());
             let name = list
                 .get(idx)
-                .map(|e| e.name.clone())
-                .unwrap_or_else(default_preset_name);
+                .map_or_else(default_preset_name, |e| e.name.clone());
             drop(list);
 
             let weak = ui.as_weak();
@@ -519,9 +529,7 @@ fn main() {
                     if let Err(e) = std::fs::write(&path, json) {
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(ui) = weak.upgrade() {
-                                ui.set_error_text(
-                                    format!("Failed to write file: {e}").into(),
-                                );
+                                ui.set_error_text(format!("Failed to write file: {e}").into());
                             }
                         });
                     }
@@ -537,19 +545,15 @@ fn main() {
         app.on_delete_preset(move || {
             let Some(ui) = weak.upgrade() else { return };
             let list = preset_list.lock().unwrap();
-            let idx = ui.get_preset_index() as usize;
-            let entry = match list.get(idx) {
-                Some(e) => e,
-                None => return,
-            };
+            let idx = slint_idx(ui.get_preset_index());
+            let Some(entry) = list.get(idx) else { return };
 
             if is_builtin(&entry.name) {
                 return;
             }
 
-            let filename = match &entry.filename {
-                Some(f) => f.clone(),
-                None => return,
+            let Some(filename) = entry.filename.clone() else {
+                return;
             };
             drop(list);
 
@@ -568,7 +572,7 @@ fn main() {
         });
     }
 
-    // ── Toggle source ──
+    // Toggle source
     {
         let weak = app.as_weak();
         let source_active = Arc::clone(&source_active);
@@ -637,7 +641,7 @@ fn main() {
         });
     }
 
-    // ── Toggle target ──
+    // Toggle target
     {
         let weak = app.as_weak();
         let target_active = Arc::clone(&target_active);
@@ -658,11 +662,10 @@ fn main() {
             }
 
             let list = preset_list.lock().unwrap();
-            let idx = ui.get_preset_index() as usize;
+            let idx = slint_idx(ui.get_preset_index());
             let preset_name = list
                 .get(idx)
-                .map(|e| e.name.clone())
-                .unwrap_or_else(default_preset_name);
+                .map_or_else(default_preset_name, |e| e.name.clone());
             drop(list);
 
             let config_json = match resolve_preset(&preset_name) {
@@ -683,7 +686,7 @@ fn main() {
             let vts_ip = ui.get_vts_ip().to_string();
             let vts_port = ui.get_vts_port().to_string();
 
-            // Create fresh plugin channels — bridge will pick up the new sender
+            // Create fresh plugin channels; bridge will pick up the new sender
             let (tx, receiver) = mpsc::channel::<TrackingResponse>();
             *plugin_tx.lock().unwrap() = Some(tx);
 
@@ -702,7 +705,7 @@ fn main() {
         });
     }
 
-    // ── Status polling ──
+    // Status polling
     {
         let weak = app.as_weak();
         let source_active = Arc::clone(&source_active);
@@ -749,7 +752,7 @@ fn main() {
 
                     if src_on {
                         if src_rate > 0.0 {
-                            ui.set_source_status(format!("{:.1} packets/s", src_rate).into());
+                            ui.set_source_status(format!("{src_rate:.1} packets/s").into());
                             ui.set_source_status_color(color(COLOR_GREEN));
                             src_had.store(true, Ordering::Relaxed);
                         } else if src_had.load(Ordering::Relaxed) {

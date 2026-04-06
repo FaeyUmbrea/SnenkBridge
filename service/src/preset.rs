@@ -17,6 +17,7 @@ pub struct SnekPreset {
 }
 
 impl SnekPreset {
+    #[must_use]
     pub fn new(title: String, params: Vec<CalcFn>) -> Self {
         Self {
             format: "snek".to_string(),
@@ -32,6 +33,7 @@ impl SnekPreset {
 /// Sanitize a preset title into a safe filename (without extension).
 /// Lowercase, replace spaces with hyphens, strip non-alphanumeric except hyphens/underscores.
 /// Empty input returns "preset".
+#[must_use]
 pub fn sanitize_title(title: &str) -> String {
     let lowered = title.to_lowercase();
     let mut result = String::new();
@@ -53,13 +55,18 @@ pub fn sanitize_title(title: &str) -> String {
 }
 
 /// Save a preset to a directory as a .snek file.
+///
 /// Filename derived from title. If a file with the same title already exists, overwrite it.
 /// If a file with the same filename but different title exists, append a number.
 /// Returns the filename used.
+///
+/// # Errors
+///
+/// Returns an error string if serialization or writing fails.
 pub fn save_preset(dir: &Path, preset: &SnekPreset) -> Result<String, String> {
     let base = sanitize_title(&preset.title);
 
-    // Check if any existing file has this exact title — overwrite it.
+    // Check if any existing file has this exact title; if so, overwrite it.
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -71,8 +78,8 @@ pub fn save_preset(dir: &Path, preset: &SnekPreset) -> Result<String, String> {
                             .and_then(|n| n.to_str())
                             .unwrap_or("")
                             .to_string();
-                        let json = serde_json::to_string_pretty(preset)
-                            .map_err(|e| e.to_string())?;
+                        let json =
+                            serde_json::to_string_pretty(preset).map_err(|e| e.to_string())?;
                         fs::write(&path, json).map_err(|e| e.to_string())?;
                         return Ok(filename);
                     }
@@ -90,7 +97,7 @@ pub fn save_preset(dir: &Path, preset: &SnekPreset) -> Result<String, String> {
         return Ok(candidate);
     }
 
-    // Filename taken by a different title — append a number.
+    // Filename taken by a different title; append a number.
     let mut n = 2u32;
     loop {
         let candidate = format!("{base}-{n}.snek");
@@ -104,7 +111,11 @@ pub fn save_preset(dir: &Path, preset: &SnekPreset) -> Result<String, String> {
     }
 }
 
-/// Load a preset from a JSON string. Same logic as load_preset but from a string.
+/// Load a preset from a JSON string. Same logic as `load_preset` but from a string.
+///
+/// # Errors
+///
+/// Returns an error string if parsing fails or the version is unknown.
 pub fn load_from_str(json: &str) -> Result<SnekPreset, String> {
     // Try parsing as a bare CalcFn array first.
     if let Ok(params) = serde_json::from_str::<Vec<CalcFn>>(json) {
@@ -119,18 +130,17 @@ pub fn load_from_str(json: &str) -> Result<SnekPreset, String> {
     }
 
     // Parse as a snek envelope.
-    let value: serde_json::Value =
-        serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let value: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
 
     let version = value
         .get("version")
         .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+        .and_then(|v| u32::try_from(v).ok())
+        .unwrap_or(0);
 
     match version {
         1 => {
-            let preset: SnekPreset =
-                serde_json::from_value(value).map_err(|e| e.to_string())?;
+            let preset: SnekPreset = serde_json::from_value(value).map_err(|e| e.to_string())?;
             Ok(preset)
         }
         v => Err(format!(
@@ -139,16 +149,22 @@ pub fn load_from_str(json: &str) -> Result<SnekPreset, String> {
     }
 }
 
-/// Load a preset from a file. Handles both .snek envelopes and bare CalcFn JSON arrays.
-/// For bare arrays: returns SnekPreset with empty title/author/description.
+/// Load a preset from a file. Handles both .snek envelopes and bare `CalcFn` JSON arrays.
+///
+/// For bare arrays: returns `SnekPreset` with empty title/author/description.
 /// For .snek files: checks version field, dispatches to versioned loader.
 /// Unknown versions return an error.
+///
+/// # Errors
+///
+/// Returns an error string if reading, parsing, or version-checking fails.
 pub fn load_preset(path: &Path) -> Result<SnekPreset, String> {
     let json = fs::read_to_string(path).map_err(|e| e.to_string())?;
     load_from_str(&json)
 }
 
 /// List all .snek presets in a directory, sorted alphabetically by title (case-insensitive).
+#[must_use]
 pub fn list_presets(dir: &Path) -> Vec<SnekPreset> {
     let mut presets: Vec<SnekPreset> = fs::read_dir(dir)
         .into_iter()
@@ -158,8 +174,7 @@ pub fn list_presets(dir: &Path) -> Vec<SnekPreset> {
             e.path()
                 .extension()
                 .and_then(|x| x.to_str())
-                .map(|x| x == "snek")
-                .unwrap_or(false)
+                .is_some_and(|x| x == "snek")
         })
         .filter_map(|e| load_preset(&e.path()).ok())
         .collect();
@@ -169,6 +184,10 @@ pub fn list_presets(dir: &Path) -> Vec<SnekPreset> {
 }
 
 /// Delete a .snek file from a directory by filename.
+///
+/// # Errors
+///
+/// Returns an error string if the file cannot be removed.
 pub fn delete_preset(dir: &Path, filename: &str) -> Result<(), String> {
     let path = dir.join(filename);
     fs::remove_file(&path).map_err(|e| e.to_string())

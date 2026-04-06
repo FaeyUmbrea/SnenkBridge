@@ -41,7 +41,7 @@ pub struct DelayBuffer {
     pub out_max: f64,
 }
 
-/// SnenkBridge output format
+/// `SnenkBridge` output format
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CalcFn {
@@ -55,12 +55,16 @@ pub struct CalcFn {
     pub delay_buffer: Option<DelayBuffer>,
 }
 
-/// Converts a Vitamins JSON config string into a SnenkBridge JSON config string.
+/// Converts a Vitamins JSON config string into a `SnenkBridge` JSON config string.
 ///
 /// Complex parameters (bezier easing, delay buffers) are simplified to their
-/// core expressions — the easing curves and stateful smoothing are discarded.
+/// core expressions. The easing curves and stateful smoothing are discarded.
 /// Delay buffer references (`ref.ParamName`) are resolved by inlining the
 /// referenced parameter's expression from the same config.
+///
+/// # Errors
+///
+/// Returns an error string if parsing or serialization fails.
 pub fn convert_vitamins_config(input: &str) -> Result<String, String> {
     let preset = convert_vitamins_to_preset(input, true)?;
     serde_json::to_string_pretty(&preset.params)
@@ -70,8 +74,12 @@ pub fn convert_vitamins_config(input: &str) -> Result<String, String> {
 /// Converts a Vitamins JSON config string into a `SnekPreset`.
 ///
 /// When `swap_xy` is `true`, applies all `map_output_name` mappings including
-/// the FaceAngleX<->Y axis swap. When `false`, only applies non-axis mappings
-/// (Eye_Squint_L -> EyeSquintL, Eye_Squint_R -> EyeSquintR).
+/// the `FaceAngleX`<->Y axis swap. When `false`, only applies non-axis mappings
+/// (`Eye_Squint_L` -> `EyeSquintL`, `Eye_Squint_R` -> `EyeSquintR`).
+///
+/// # Errors
+///
+/// Returns an error string if the input cannot be parsed as a Vitamins config.
 pub fn convert_vitamins_to_preset(input: &str, swap_xy: bool) -> Result<SnekPreset, String> {
     let VitaminsConfig {
         save_name,
@@ -79,11 +87,10 @@ pub fn convert_vitamins_to_preset(input: &str, swap_xy: bool) -> Result<SnekPres
         description,
         custom_param,
         ..
-    } = serde_json::from_str(input)
-        .map_err(|e| format!("Failed to parse Vitamins config: {e}"))?;
+    } = serde_json::from_str(input).map_err(|e| format!("Failed to parse Vitamins config: {e}"))?;
 
     let params: Vec<CalcFn> = custom_param
-        .into_iter()
+        .iter()
         .filter(|p| p.send_flag == "true")
         .map(|p| convert_param(p, swap_xy))
         .collect();
@@ -98,7 +105,7 @@ pub fn convert_vitamins_to_preset(input: &str, swap_xy: bool) -> Result<SnekPres
     })
 }
 
-/// Maps Vitamins output parameter names to VTube Studio conventions
+/// Maps Vitamins output parameter names to VTubeStudio conventions
 /// where they differ. Vitamins uses swapped X/Y axes for FaceAngle
 /// and BodyAngle compared to VTS.
 ///
@@ -122,7 +129,7 @@ fn map_output_name(name: &str, swap_xy: bool) -> String {
     }
 }
 
-fn convert_param(param: VitaminsParam, swap_xy: bool) -> CalcFn {
+fn convert_param(param: &VitaminsParam, swap_xy: bool) -> CalcFn {
     let raw_name = param
         .param_name
         .strip_prefix("param_")
@@ -171,7 +178,7 @@ fn strip_block_comments(input: &str) -> String {
         if let Some(end) = remaining[start..].find("*/") {
             remaining = &remaining[start + end + 2..];
         } else {
-            // Unclosed block comment — discard rest
+            // Unclosed block comment; discard rest
             return result;
         }
     }
@@ -187,8 +194,8 @@ enum ComplexResult {
 /// Extracts the core expression from a complex Vitamins function.
 ///
 /// Complex functions follow one of two patterns:
-/// 1. Bezier curve: `let result = <expr>\n let inmin=...` — extract expr, use outmin/outmax
-/// 2. Delay buffer: `let p=ref.ParamName;` — extract the ref and emit a DelayBuffer config
+/// 1. Bezier curve: `let result = <expr>\n let inmin=...` - extract expr, use outmin/outmax
+/// 2. Delay buffer: `let p=ref.ParamName;` - extract the ref and emit a `DelayBuffer` config
 fn convert_complex_func(func: &str, fallback_min: f64, fallback_max: f64) -> ComplexResult {
     // Strip block comments before processing
     let cleaned = strip_block_comments(func);
@@ -242,10 +249,7 @@ fn convert_bezier_func(lines: &[&str], fallback_min: f64, fallback_max: f64) -> 
         // Fallback: try to use the first non-empty line as the expression
         for line in lines {
             let trimmed = line.trim();
-            if !trimmed.is_empty()
-                && !trimmed.starts_with("let ")
-                && !trimmed.starts_with("//")
-            {
+            if !trimmed.is_empty() && !trimmed.starts_with("let ") && !trimmed.starts_with("//") {
                 core_expr = trimmed.to_string();
                 break;
             }
@@ -257,11 +261,7 @@ fn convert_bezier_func(lines: &[&str], fallback_min: f64, fallback_max: f64) -> 
 }
 
 /// Handles delay buffer complex functions that reference other parameters.
-fn convert_delay_buffer_func(
-    lines: &[&str],
-    fallback_min: f64,
-    fallback_max: f64,
-) -> DelayBuffer {
+fn convert_delay_buffer_func(lines: &[&str], fallback_min: f64, fallback_max: f64) -> DelayBuffer {
     let mut ref_param = String::new();
     let mut smoothing = 1.0;
     let mut delay_count: usize = 1;
@@ -414,7 +414,7 @@ fn find_comment_start(s: &str) -> Option<usize> {
     None
 }
 
-/// Renames Vitamins tracking variable names to SnenkBridge conventions.
+/// Renames Vitamins tracking variable names to `SnenkBridge` conventions.
 fn rename_variables(expr: &str) -> String {
     let mapping = build_variable_mapping();
 
@@ -459,7 +459,7 @@ fn replace_identifier(input: &str, from: &str, to: &str) -> String {
             result.push_str(to);
             remaining = &remaining[after_pos..];
         } else {
-            result.push_str(&remaining[..pos + 1]);
+            result.push_str(&remaining[..=pos]);
             remaining = &remaining[pos + 1..];
         }
     }
@@ -550,7 +550,7 @@ fn build_variable_mapping() -> HashMap<String, String> {
 
     pairs
         .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
         .collect()
 }
 
@@ -563,7 +563,10 @@ mod tests {
         match result {
             ComplexResult::Bezier { func, min, max } => (func, min, max),
             ComplexResult::DelayBuffer(db) => {
-                panic!("Expected Bezier, got DelayBuffer referencing {}", db.ref_param)
+                panic!(
+                    "Expected Bezier, got DelayBuffer referencing {}",
+                    db.ref_param
+                )
             }
         }
     }
@@ -636,7 +639,7 @@ stuff"#;
             send_flag: "true".to_string(),
             param_name: "param_FaceAngleX".to_string(),
         };
-        let result = convert_param(param, true);
+        let result = convert_param(&param, true);
         // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
         assert_eq!(result.name, "FaceAngleY");
     }
@@ -1167,7 +1170,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "param_CheekPuff".to_string(),
         };
-        let result = convert_param(param, true);
+        let result = convert_param(&param, true);
         assert_eq!(result.name, "CheekPuff");
         assert_eq!(result.func, "CheekPuff");
         assert_eq!(result.min, 0.0);
@@ -1186,7 +1189,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "JawOpen".to_string(),
         };
-        let result = convert_param(param, true);
+        let result = convert_param(&param, true);
         assert_eq!(result.name, "JawOpen");
     }
 
@@ -1203,7 +1206,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "param_FaceAngleX".to_string(),
         };
-        let result = convert_param(param, true);
+        let result = convert_param(&param, true);
         // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
         assert_eq!(result.name, "FaceAngleY");
         assert_eq!(result.func, "HeadRotY");
@@ -1222,7 +1225,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "param_JawOpen".to_string(),
         };
-        let result = convert_param(param, true);
+        let result = convert_param(&param, true);
         assert_eq!(result.default_value, 0.5);
     }
 
