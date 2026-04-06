@@ -7,7 +7,7 @@ use std::{
         mpsc::Receiver,
         Arc, LazyLock, Mutex,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use evalexpr::{
@@ -212,7 +212,7 @@ impl VTubeStudioPlugin {
         let mut token: Option<String> = fs::read_to_string(&token_path).ok();
 
         let vts_status = VTubeStudioPlugin::req_status_msg();
-        let (mut precalc_funcs, mut used_timestamps, mut new_params, mut delay_buffers) =
+        let (precalc_funcs, used_timestamps, mut new_params, mut delay_buffers) =
             self.precalc_cfg();
 
         msg_buffer.push_back(vts_status.clone());
@@ -490,7 +490,7 @@ impl VTubeStudioPlugin {
         &self,
         precalc_funcs: &Vec<(String, String, Node)>,
         used_timestamps: &HashSet<u64>,
-        delay_buffers: &mut Vec<(String, DelayBufferState)>,
+        delay_buffers: &mut [(String, DelayBufferState)],
     ) -> Option<Message> {
         let mut context = HashMapContext::new();
 

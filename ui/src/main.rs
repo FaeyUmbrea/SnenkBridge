@@ -206,7 +206,6 @@ fn main() {
     let has_custom = custom_preset_path().is_file();
 
     app.set_preset_index(settings.preset_index);
-    app.set_about_text(DEPENDENCY_CREDITS.into());
     app.set_phone_ip(settings.phone_ip.into());
     app.set_tracking_type_index(settings.tracking_type_index);
     app.set_face_search_timeout(settings.face_search_timeout.into());
@@ -228,6 +227,15 @@ fn main() {
         app.on_settings_changed(move || {
             let Some(ui) = weak.upgrade() else { return };
             save_settings(&read_settings_from_ui(&ui));
+        });
+    }
+
+    // About window
+    {
+        app.on_show_about(move || {
+            let about = AboutWindow::new().unwrap();
+            about.set_credits_text(DEPENDENCY_CREDITS.into());
+            about.show().unwrap();
         });
     }
 
