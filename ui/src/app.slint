@@ -197,6 +197,118 @@ export component AboutWindow inherits Window {
     }
 }
 
+export component ImportDialog inherits Window {
+    title: "Import Preset";
+    default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
+    default-font-size: 13px;
+    min-width: 380px;
+    min-height: 260px;
+    preferred-width: 380px;
+    preferred-height: 260px;
+    background: #141422;
+
+    in-out property<string> preset-title;
+    in-out property<string> preset-author;
+    in-out property<string> preset-description;
+    in-out property<bool> show-swap-toggle: false;
+    in-out property<bool> swap-xy: false;
+
+    callback do-import();
+    callback do-cancel();
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+
+        Text {
+            text: "Import Preset";
+            color: #c8c8e0;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            FieldLabel { text: "Title"; }
+            StyledInput {
+                text <=> root.preset-title;
+                placeholder: "Preset name";
+                horizontal-stretch: 1;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            FieldLabel { text: "Author"; }
+            StyledInput {
+                text <=> root.preset-author;
+                placeholder: "Optional";
+                horizontal-stretch: 1;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            FieldLabel { text: "Desc"; }
+            StyledInput {
+                text <=> root.preset-description;
+                placeholder: "Optional";
+                horizontal-stretch: 1;
+            }
+        }
+
+        if root.show-swap-toggle : HorizontalLayout {
+            spacing: 10px;
+            FieldLabel { text: ""; }
+            TouchArea {
+                width: 16px;
+                height: 16px;
+                clicked => { root.swap-xy = !root.swap-xy; }
+                Rectangle {
+                    width: 14px;
+                    height: 14px;
+                    border-width: 1px;
+                    border-radius: 3px;
+                    border-color: #6c6cb5;
+                    background: root.swap-xy ? #4a4a8a : transparent;
+                }
+            }
+            Text {
+                text: "Swap pitch/yaw X/Y alignment";
+                color: #8888aa;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Btn {
+                label: "Cancel";
+                width: 80px;
+                base-bg: #2a2a48;
+                hover-bg: #3a3a5c;
+                base-border: #3d3d5c;
+                hover-border: #6c6cb5;
+                clicked => { root.do-cancel(); }
+            }
+            Btn {
+                label: "Import";
+                width: 80px;
+                base-bg: #4a4a8a;
+                hover-bg: #5c5ca0;
+                base-border: #6c6cb5;
+                hover-border: #8888dd;
+                text-color: #e0e0ff;
+                clicked => { root.do-import(); }
+            }
+        }
+    }
+}
+
 export component App inherits Window {
     title: "SnenkBridge";
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
@@ -208,6 +320,8 @@ export component App inherits Window {
     background: #141422;
 
     in-out property<int> preset-index: 0;
+    in property<[string]> preset-names: ["Default"];
+    in-out property<bool> can-delete-preset: false;
     in-out property<string> phone-ip: "127.0.0.1";
     in-out property<int> tracking-type-index: 0;
     in-out property<string> face-search-timeout: "3000";
@@ -221,9 +335,10 @@ export component App inherits Window {
     in-out property<string> target-status: "Disconnected";
     in-out property<color> target-status-color: #cc4444;
     in-out property<string> error-text;
-    in-out property<bool> has-custom-preset: false;
 
     callback import-preset();
+    callback export-preset();
+    callback delete-preset();
     callback toggle-source();
     callback toggle-target();
     callback settings-changed();
@@ -354,12 +469,10 @@ export component App inherits Window {
             }
 
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 6px;
                 FieldLabel { text: "Preset"; }
                 StyledCombo {
-                    model: root.has-custom-preset
-                        ? ["Default", "Maruseu VBridger", "Maruseu Enhanced", "Custom"]
-                        : ["Default", "Maruseu VBridger", "Maruseu Enhanced"];
+                    model: root.preset-names;
                     current-index <=> root.preset-index;
                     enabled: !root.target-active;
                     horizontal-stretch: 1;
@@ -368,12 +481,33 @@ export component App inherits Window {
                 Btn {
                     label: "Import";
                     enabled: !root.target-active;
-                    width: 72px;
+                    width: 64px;
                     base-bg: #2a2a48;
                     hover-bg: #3a3a5c;
                     base-border: #3d3d5c;
                     hover-border: #6c6cb5;
                     clicked => { root.import-preset(); }
+                }
+                Btn {
+                    label: "Export";
+                    enabled: !root.target-active;
+                    width: 64px;
+                    base-bg: #2a2a48;
+                    hover-bg: #3a3a5c;
+                    base-border: #3d3d5c;
+                    hover-border: #6c6cb5;
+                    clicked => { root.export-preset(); }
+                }
+                if root.can-delete-preset : Btn {
+                    label: "Del";
+                    enabled: !root.target-active;
+                    width: 40px;
+                    base-bg: #3a2020;
+                    hover-bg: #6b2a2a;
+                    base-border: #4a2a2a;
+                    hover-border: #994444;
+                    text-color: #cc8888;
+                    clicked => { root.delete-preset(); }
                 }
             }
 

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::preset::SnekPreset;
+
 /// Vitamins input format
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +42,7 @@ pub struct DelayBuffer {
 }
 
 /// SnenkBridge output format
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CalcFn {
     pub name: String,
@@ -60,44 +62,72 @@ pub struct CalcFn {
 /// Delay buffer references (`ref.ParamName`) are resolved by inlining the
 /// referenced parameter's expression from the same config.
 pub fn convert_vitamins_config(input: &str) -> Result<String, String> {
-    let vb: VitaminsConfig =
-        serde_json::from_str(input).map_err(|e| format!("Failed to parse Vitamins config: {e}"))?;
-
-    // First pass: convert all parameters
-    let calc_fns: Vec<CalcFn> = vb
-        .custom_param
-        .into_iter()
-        .filter(|p| p.send_flag == "true")
-        .map(convert_param)
-        .collect();
-
-    // No post-processing needed — delay buffers are emitted as DelayBuffer
-    // configs and handled at runtime by the VTS plugin.
-
-    serde_json::to_string_pretty(&calc_fns).map_err(|e| format!("Failed to serialize output: {e}"))
+    let preset = convert_vitamins_to_preset(input, true)?;
+    serde_json::to_string_pretty(&preset.params)
+        .map_err(|e| format!("Failed to serialize output: {e}"))
 }
 
-/// Maps Vitamins output parameter names to VTube Studio conventions
-/// where they differ.
+/// Converts a Vitamins JSON config string into a `SnekPreset`.
+///
+/// When `swap_xy` is `true`, applies all `map_output_name` mappings including
+/// the FaceAngleX<->Y axis swap. When `false`, only applies non-axis mappings
+/// (Eye_Squint_L -> EyeSquintL, Eye_Squint_R -> EyeSquintR).
+pub fn convert_vitamins_to_preset(input: &str, swap_xy: bool) -> Result<SnekPreset, String> {
+    let VitaminsConfig {
+        save_name,
+        author,
+        description,
+        custom_param,
+        ..
+    } = serde_json::from_str(input)
+        .map_err(|e| format!("Failed to parse Vitamins config: {e}"))?;
+
+    let params: Vec<CalcFn> = custom_param
+        .into_iter()
+        .filter(|p| p.send_flag == "true")
+        .map(|p| convert_param(p, swap_xy))
+        .collect();
+
+    Ok(SnekPreset {
+        format: "snek".to_string(),
+        version: 1,
+        title: save_name,
+        author,
+        description,
+        params,
+    })
+}
+
 /// Maps Vitamins output parameter names to VTube Studio conventions
 /// where they differ. Vitamins uses swapped X/Y axes for FaceAngle
 /// and BodyAngle compared to VTS.
-fn map_output_name(name: &str) -> String {
-    match name {
-        "FaceAngleX" => "FaceAngleY".to_string(),
-        "FaceAngleY" => "FaceAngleX".to_string(),
-        "Eye_Squint_L" => "EyeSquintL".to_string(),
-        "Eye_Squint_R" => "EyeSquintR".to_string(),
-        _ => name.to_string(),
+///
+/// When `swap_xy` is true, all mappings are applied including the axis swap.
+/// When false, only non-axis mappings are applied (Eye_Squint renaming).
+fn map_output_name(name: &str, swap_xy: bool) -> String {
+    if swap_xy {
+        match name {
+            "FaceAngleX" => "FaceAngleY".to_string(),
+            "FaceAngleY" => "FaceAngleX".to_string(),
+            "Eye_Squint_L" => "EyeSquintL".to_string(),
+            "Eye_Squint_R" => "EyeSquintR".to_string(),
+            _ => name.to_string(),
+        }
+    } else {
+        match name {
+            "Eye_Squint_L" => "EyeSquintL".to_string(),
+            "Eye_Squint_R" => "EyeSquintR".to_string(),
+            _ => name.to_string(),
+        }
     }
 }
 
-fn convert_param(param: VitaminsParam) -> CalcFn {
+fn convert_param(param: VitaminsParam, swap_xy: bool) -> CalcFn {
     let raw_name = param
         .param_name
         .strip_prefix("param_")
         .unwrap_or(&param.param_name);
-    let name = map_output_name(raw_name);
+    let name = map_output_name(raw_name, swap_xy);
 
     if param.param_type == "complex" {
         let result = convert_complex_func(&param.func, param.min, param.max);
@@ -606,7 +636,7 @@ stuff"#;
             send_flag: "true".to_string(),
             param_name: "param_FaceAngleX".to_string(),
         };
-        let result = convert_param(param);
+        let result = convert_param(param, true);
         // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
         assert_eq!(result.name, "FaceAngleY");
     }
@@ -1137,7 +1167,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "param_CheekPuff".to_string(),
         };
-        let result = convert_param(param);
+        let result = convert_param(param, true);
         assert_eq!(result.name, "CheekPuff");
         assert_eq!(result.func, "CheekPuff");
         assert_eq!(result.min, 0.0);
@@ -1156,7 +1186,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "JawOpen".to_string(),
         };
-        let result = convert_param(param);
+        let result = convert_param(param, true);
         assert_eq!(result.name, "JawOpen");
     }
 
@@ -1173,7 +1203,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "param_FaceAngleX".to_string(),
         };
-        let result = convert_param(param);
+        let result = convert_param(param, true);
         // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
         assert_eq!(result.name, "FaceAngleY");
         assert_eq!(result.func, "HeadRotY");
@@ -1192,7 +1222,7 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             send_flag: "true".to_string(),
             param_name: "param_JawOpen".to_string(),
         };
-        let result = convert_param(param);
+        let result = convert_param(param, true);
         assert_eq!(result.default_value, 0.5);
     }
 
@@ -1389,5 +1419,31 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             result,
             "HeadRotX + HeadRotY + HeadRotZ + HeadPosX + HeadPosY + HeadPosZ"
         );
+    }
+
+    // --- convert_vitamins_to_preset ---
+
+    #[test]
+    fn test_convert_vitamins_returns_snek_preset() {
+        let input = r#"{"version":"0.9.7","customParam":[
+            {"func":"return jawOpen","max":1,"min":0,"default":0,"type":"simple","sendFlag":"true","paramName":"param_JawOpen"}
+        ],"author":"TestAuthor","description":"A test preset","saveName":"TestPreset","isDefault":false}"#;
+        let preset = convert_vitamins_to_preset(input, true).unwrap();
+        assert_eq!(preset.title, "TestPreset");
+        assert_eq!(preset.author, "TestAuthor");
+        assert_eq!(preset.description, "A test preset");
+        assert_eq!(preset.params.len(), 1);
+        assert_eq!(preset.params[0].name, "JawOpen");
+    }
+
+    #[test]
+    fn test_convert_vitamins_swap_xy_flag() {
+        let input = r#"{"version":"0.9.7","customParam":[
+            {"func":"return headRotY","max":30,"min":-30,"default":0,"type":"simple","sendFlag":"true","paramName":"param_FaceAngleX"}
+        ],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
+        let with_swap = convert_vitamins_to_preset(input, true).unwrap();
+        assert_eq!(with_swap.params[0].name, "FaceAngleY");
+        let without_swap = convert_vitamins_to_preset(input, false).unwrap();
+        assert_eq!(without_swap.params[0].name, "FaceAngleX");
     }
 }

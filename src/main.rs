@@ -86,7 +86,7 @@ fn main() {
 }
 
 fn run_convert(input: PathBuf, output: Option<PathBuf>) {
-    let output = output.unwrap_or_else(|| input.with_extension("json"));
+    let output = output.unwrap_or_else(|| input.with_extension("snek"));
 
     let content = match std::fs::read_to_string(&input) {
         Ok(c) => c,
@@ -96,15 +96,23 @@ fn run_convert(input: PathBuf, output: Option<PathBuf>) {
         }
     };
 
-    let converted = match vitamins::convert_vitamins_config(&content) {
-        Ok(c) => c,
+    let preset = match vitamins::convert_vitamins_to_preset(&content, true) {
+        Ok(p) => p,
         Err(e) => {
             eprintln!("Error converting {}: {}", input.display(), e);
             std::process::exit(1);
         }
     };
 
-    match std::fs::write(&output, &converted) {
+    let json = match serde_json::to_string_pretty(&preset) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("Error serializing: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    match std::fs::write(&output, &json) {
         Ok(_) => println!("Converted {} -> {}", input.display(), output.display()),
         Err(e) => {
             eprintln!("Error writing {}: {}", output.display(), e);
