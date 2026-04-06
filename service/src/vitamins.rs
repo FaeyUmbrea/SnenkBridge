@@ -79,8 +79,13 @@ pub fn convert_vitamins_config(input: &str) -> Result<String, String> {
 
 /// Maps Vitamins output parameter names to VTube Studio conventions
 /// where they differ.
+/// Maps Vitamins output parameter names to VTube Studio conventions
+/// where they differ. Vitamins uses swapped X/Y axes for FaceAngle
+/// and BodyAngle compared to VTS.
 fn map_output_name(name: &str) -> String {
     match name {
+        "FaceAngleX" => "FaceAngleY".to_string(),
+        "FaceAngleY" => "FaceAngleX".to_string(),
         "Eye_Squint_L" => "EyeSquintL".to_string(),
         "Eye_Squint_R" => "EyeSquintR".to_string(),
         _ => name.to_string(),
@@ -602,7 +607,8 @@ stuff"#;
             param_name: "param_FaceAngleX".to_string(),
         };
         let result = convert_param(param);
-        assert_eq!(result.name, "FaceAngleX");
+        // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
+        assert_eq!(result.name, "FaceAngleY");
     }
 
     #[test]
@@ -961,14 +967,14 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
         ],"author":"Test","description":"","saveName":"Test","isDefault":false}"#;
         let output = convert_vitamins_config(input).unwrap();
         let parsed: Vec<CalcFn> = serde_json::from_str(&output).unwrap();
-        // Normal param preserved as-is
-        assert_eq!(parsed[0].name, "FaceAngleX");
+        // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
+        assert_eq!(parsed[0].name, "FaceAngleY");
         assert_eq!(parsed[0].func, "HeadRotY * 1.5");
         assert!(parsed[0].delay_buffer.is_none());
-        // Delay buffer param has DelayBuffer config
         assert_eq!(parsed[1].name, "BodyAngleX");
         assert!(parsed[1].func.is_empty());
         let db = parsed[1].delay_buffer.as_ref().unwrap();
+        // ref_param stays as the Vitamins internal name (pre-swap)
         assert_eq!(db.ref_param, "FaceAngleX");
         assert_eq!(db.smoothing, 2.0);
         assert_eq!(db.delay_count, 8);
@@ -1168,7 +1174,8 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
             param_name: "param_FaceAngleX".to_string(),
         };
         let result = convert_param(param);
-        assert_eq!(result.name, "FaceAngleX");
+        // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
+        assert_eq!(result.name, "FaceAngleY");
         assert_eq!(result.func, "HeadRotY");
         assert_eq!(result.min, -30.0);
         assert_eq!(result.max, 30.0);
@@ -1238,8 +1245,8 @@ let outmin=-10.0, outmax=10.0;     //output range"#;
 
         assert_eq!(parsed.len(), 4);
 
-        // Names preserved as-is from VPS (no axis swapping or renaming)
-        assert_eq!(parsed[0].name, "FaceAngleX");
+        // Vitamins FaceAngleX → VTS FaceAngleY (axis swap)
+        assert_eq!(parsed[0].name, "FaceAngleY");
         assert_eq!(parsed[0].func, "HeadRotY");
         assert_eq!(parsed[0].min, -30.0);
         assert_eq!(parsed[0].max, 30.0);
