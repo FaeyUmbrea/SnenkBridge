@@ -11,7 +11,6 @@ use snenk_bridge_service::{
     vts::plugin::VTubeStudioPlugin,
 };
 use std::{
-    path::Path,
     rc::Rc,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -248,9 +247,37 @@ fn build_snek_preset(name: &str) -> Result<SnekPreset, String> {
 // Main
 
 fn main() {
-    let log_config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../configs/log_cfg.yml");
-    log4rs::init_file(log_config_path, Default::default())
-        .expect("Unable to initialize logging from configs/log_cfg.yml");
+    let log_pattern = "[{d(%Y-%m-%d %H:%M:%S)} {h({l}):<5.5} {f}:{L}] {m}{n}";
+
+    let stdout = log4rs::append::console::ConsoleAppender::builder()
+        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
+            log_pattern,
+        )))
+        .build();
+
+    let roll = log4rs::append::rolling_file::RollingFileAppender::builder()
+        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(log_pattern)))
+        .build(
+            "log/log.log",
+            Box::new(log4rs::append::rolling_file::policy::compound::CompoundPolicy::new(
+                Box::new(log4rs::append::rolling_file::policy::compound::trigger::size::SizeTrigger::new(1024 * 1024)),
+                Box::new(log4rs::append::rolling_file::policy::compound::roll::delete::DeleteRoller::new()),
+            )),
+        )
+        .expect("Failed to create rolling file appender");
+
+    let config = log4rs::Config::builder()
+        .appender(log4rs::config::Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(log4rs::config::Appender::builder().build("roll", Box::new(roll)))
+        .build(
+            log4rs::config::Root::builder()
+                .appender("stdout")
+                .appender("roll")
+                .build(log::LevelFilter::Info),
+        )
+        .expect("Failed to build log config");
+
+    log4rs::init_config(config).expect("Failed to initialize logging");
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
