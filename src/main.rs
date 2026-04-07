@@ -144,9 +144,35 @@ fn run_bridge(cli: Cli) {
     let active_flag = Arc::new(AtomicBool::new(true));
     let active_flag_clone = Arc::clone(&active_flag);
 
-    let log_config = include_str!("../configs/log_cfg.yml");
-    let raw_log_config = serde_yaml::from_str(log_config).unwrap();
-    log4rs::init_raw_config(raw_log_config).unwrap();
+    let log_pattern = "[{d(%Y-%m-%d %H:%M:%S)} {h({l}):<5.5} {f}:{L}] {m}{n}";
+
+    let stdout = log4rs::append::console::ConsoleAppender::builder()
+        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(log_pattern)))
+        .build();
+
+    let roll = log4rs::append::rolling_file::RollingFileAppender::builder()
+        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(log_pattern)))
+        .build(
+            "log/log.log",
+            Box::new(log4rs::append::rolling_file::policy::compound::CompoundPolicy::new(
+                Box::new(log4rs::append::rolling_file::policy::compound::trigger::size::SizeTrigger::new(1024 * 1024)),
+                Box::new(log4rs::append::rolling_file::policy::compound::roll::delete::DeleteRoller::new()),
+            )),
+        )
+        .expect("Failed to create rolling file appender");
+
+    let log_config = log4rs::Config::builder()
+        .appender(log4rs::config::Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(log4rs::config::Appender::builder().build("roll", Box::new(roll)))
+        .build(
+            log4rs::config::Root::builder()
+                .appender("stdout")
+                .appender("roll")
+                .build(log::LevelFilter::Info),
+        )
+        .expect("Failed to build log config");
+
+    log4rs::init_config(log_config).expect("Failed to initialize logging");
 
     let (sender, receiver): (Sender<TrackingResponse>, Receiver<TrackingResponse>) =
         mpsc::channel();
