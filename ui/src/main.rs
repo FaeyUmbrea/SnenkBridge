@@ -250,7 +250,9 @@ fn main() {
     let log_pattern = "[{d(%Y-%m-%d %H:%M:%S)} {h({l}):<5.5} {f}:{L}] {m}{n}";
 
     let stdout = log4rs::append::console::ConsoleAppender::builder()
-        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(log_pattern)))
+        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
+            log_pattern,
+        )))
         .build();
 
     let roll = log4rs::append::rolling_file::RollingFileAppender::builder()
