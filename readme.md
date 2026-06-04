@@ -4,6 +4,12 @@ A free, lightweight, open-source alternative to [VBridger](https://store.steampo
 
 Snenk Bridge takes face tracking data from your iPhone, lets you transform it with custom math expressions, and sends it to [VTubeStudio](https://store.steampowered.com/app/1325860/VTube_Studio/) on your PC. You get full control over how your tracking data maps to your model's parameters — no black boxes.
 
+There's a built-in editor with a live preview, so you can shape the mapping and watch it move as you tweak — before you even open VTube Studio. Runs on macOS, Windows, and Linux.
+
+## Support
+
+Snenk Bridge is free and I work on it in my spare time. If it's useful to you and you'd like to chip in, you can support it here: **[your support page](SUPPORT_URL)**. Completely optional — it just helps me keep building.
+
 ## Supported Tracking Apps
 
 - [VTubeStudio](https://apps.apple.com/app/vtube-studio/id1511435444) (use `vts` or `vtubestudio`)
@@ -13,18 +19,15 @@ Snenk Bridge takes face tracking data from your iPhone, lets you transform it wi
 
 ### UI
 
-1. Launch `snenk_bridge_ui`
-2. Set the path to your config file (type it in or use the browse button)
-3. Enter your phone's local IP address
-4. Pick your tracking app
-5. Set the face found timeout (in milliseconds) — this controls how long it waits before assuming the face is gone
-6. Hit **Connect**
-7. You can close the window after that — it keeps running in the background
+1. Launch the app.
+2. Pick a preset from the dropdown at the top — or open the **Editor** tab to build your own mapping.
+3. In the **SOURCE** row, enter your phone's IP, choose your tracking app, and hit **Connect**.
+4. The **TARGET** row points at VTube Studio (the defaults usually just work) — hit **Connect** there too.
+5. Switch to the **Preview** tab to watch your tracking come through, and tune from there.
 
-> [!TIP]
-> Use the system tray icon to show the window again or exit the app.
+### CLI (optional)
 
-### CLI
+The CLI isn't built by default — see [Building from Source](#building-from-source) if you want it. Run `snenk_bridge` with the following arguments:
 
 Run `snenk_bridge` with the following arguments:
 
@@ -51,12 +54,11 @@ A working example config is included as [`test.json`](test.json).
 git clone https://github.com/FaeyUmbrea/SnenkBridge.git
 cd SnenkBridge
 
-# Build both CLI and UI
+# Build the UI app (the default)
 cargo build --release
 
-# Or just one of them
-cargo build --release --package snenk_bridge      # CLI only
-cargo build --release --package snenk_bridge_ui   # UI only
+# Build the optional CLI instead
+cargo build --release --package snenk_bridge
 ```
 
 ## Contributing
