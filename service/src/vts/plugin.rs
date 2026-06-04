@@ -10,9 +10,9 @@ use std::{
     time::Duration,
 };
 
-use evalexpr::{
-    Context, ContextWithMutableVariables, HashMapContext, IterateVariablesContext, Node,
-};
+use evalexpr::{Context, ContextWithMutableVariables, HashMapContext, IterateVariablesContext};
+use crate::delay::DelayBufferState;
+use crate::eval::CompiledParam;
 use log::{error, info, warn};
 use regex::Regex;
 use serde_json::Value;
@@ -21,12 +21,12 @@ use tungstenite::{stream::MaybeTlsStream, Message, WebSocket};
 use crate::{
     tracking::response::TrackingResponse,
     utils::{get_current_timestamp, get_current_timestamp_ms},
-    vitamins::{CalcFn, DelayBuffer},
+    vitamins::CalcFn,
     vts::{requests, responses},
 };
 
 type PrecalcCfg = (
-    Vec<(String, String, Node)>,
+    Vec<CompiledParam>,
     HashSet<u64>,
     VecDeque<Message>,
     Vec<(String, DelayBufferState)>,
@@ -53,46 +53,6 @@ struct VTSApiRequest<'a, T> {
     request_id: &'a str,
     message_type: &'a str,
     data: Option<T>,
-}
-
-/// Runtime state for a delay buffer parameter.
-struct DelayBufferState {
-    config: DelayBuffer,
-    ring: Vec<f64>,
-    write_pos: usize,
-    smoothed: f64,
-}
-
-impl DelayBufferState {
-    fn new(config: DelayBuffer) -> Self {
-        let ring = vec![0.0; config.delay_count];
-        Self {
-            config,
-            ring,
-            write_pos: 0,
-            smoothed: 0.0,
-        }
-    }
-
-    /// Feeds the referenced parameter's current value and returns the
-    /// smoothed, delayed, range-mapped output.
-    fn update(&mut self, input: f64) -> f64 {
-        // Range-map input from [in_min, in_max] to [out_min, out_max]
-        let clamped = input.clamp(self.config.in_min, self.config.in_max);
-        let normalized = (clamped - self.config.in_min) / (self.config.in_max - self.config.in_min);
-        let mapped = normalized * (self.config.out_max - self.config.out_min) + self.config.out_min;
-
-        // Store in ring buffer
-        self.ring[self.write_pos] = mapped;
-        self.write_pos = (self.write_pos + 1) % self.ring.len();
-
-        // Read delayed value (oldest in ring buffer)
-        let delayed = self.ring[self.write_pos % self.ring.len()];
-
-        // Exponential smoothing
-        self.smoothed += (delayed - self.smoothed) / self.config.smoothing;
-        self.smoothed
-    }
 }
 
 pub struct VTubeStudioPlugin {
@@ -419,7 +379,7 @@ impl VTubeStudioPlugin {
 
     fn track_cyclic_info_only(
         &self,
-        precalc_funcs: &Vec<(String, String, Node)>,
+        precalc_funcs: &Vec<CompiledParam>,
         used_timestamps: &HashSet<u64>,
         face_search_timeout: &u64,
     ) -> Option<Message> {
@@ -449,21 +409,23 @@ impl VTubeStudioPlugin {
             self.insert_cyclic_info(&mut mutex_context, used_timestamps);
 
             let cloned_context = mutex_context.clone();
-            for (key, func, node) in precalc_funcs {
-                for parameter in Self::AFK_PARAMETERS {
-                    if func.contains(parameter) {
-                        params.push(requests::TrackingParam {
-                            id: key.as_str(),
-                            value: node
-                                .eval_with_context(&cloned_context)
-                                .unwrap()
-                                .as_float()
-                                .unwrap()
-                                .clamp(-1_000_000.0, 1_000_000.0),
-                            weight: Some(1.0),
-                        });
-                        break;
-                    }
+            for p in precalc_funcs {
+                if Self::AFK_PARAMETERS
+                    .iter()
+                    .any(|&param| p.func.contains(param))
+                {
+                    let value = p
+                        .node
+                        .eval_with_context(&cloned_context)
+                        .unwrap()
+                        .as_float()
+                        .unwrap()
+                        .clamp(-1_000_000.0, 1_000_000.0);
+                    params.push(requests::TrackingParam {
+                        id: p.name.as_str(),
+                        value,
+                        weight: Some(1.0),
+                    });
                 }
             }
         }
@@ -488,7 +450,7 @@ impl VTubeStudioPlugin {
 
     fn tracking_msg(
         &self,
-        precalc_funcs: &Vec<(String, String, Node)>,
+        precalc_funcs: &Vec<CompiledParam>,
         used_timestamps: &HashSet<u64>,
         delay_buffers: &mut [(String, DelayBufferState)],
     ) -> Option<Message> {
@@ -547,24 +509,29 @@ impl VTubeStudioPlugin {
         let mut computed_outputs: HashMap<String, f64> = HashMap::new();
 
         if raw_data.face_found {
-            for (key, _, node) in precalc_funcs {
-                let value = node
-                    .eval_with_context(&context)
-                    .unwrap()
-                    .as_float()
-                    .unwrap()
-                    .clamp(-1000000.0, 1000000.0);
-                computed_outputs.insert(key.clone(), value);
-                params.push(requests::TrackingParam {
-                    id: key.as_str(),
-                    value,
-                    weight: Some(1.0),
-                });
-            }
+            let values: HashMap<String, f64> = context
+                .iter_variables()
+                .filter_map(|(k, v)| v.as_float().ok().map(|f| (k.to_string(), f)))
+                .collect();
 
+            for result in crate::eval::evaluate(precalc_funcs, &values) {
+                computed_outputs.insert(result.name, result.value);
+            }
+        }
+
+        // Build params from computed_outputs (keys outlive params).
+        for (name, &value) in &computed_outputs {
+            params.push(requests::TrackingParam {
+                id: name.as_str(),
+                value,
+                weight: Some(1.0),
+            });
+        }
+
+        if raw_data.face_found {
             // Process delay buffer parameters
             for (name, db_state) in delay_buffers.iter_mut() {
-                if let Some(&ref_value) = computed_outputs.get(&db_state.config.ref_param) {
+                if let Some(&ref_value) = computed_outputs.get(db_state.ref_param()) {
                     let value = db_state.update(ref_value).clamp(-1000000.0, 1000000.0);
                     params.push(requests::TrackingParam {
                         id: name.as_str(),
@@ -710,11 +677,12 @@ impl VTubeStudioPlugin {
         };
 
         let mut timestamps = HashSet::new();
-        let mut precalc_fns: Vec<_> = Vec::new();
         let mut delay_buffers: Vec<(String, DelayBufferState)> = Vec::new();
+        // Params that will be compiled into expressions (no delay buffer).
+        let mut expression_params: Vec<CalcFn> = Vec::new();
 
         for func in calc_fns.into_iter() {
-            let name: String = func.name;
+            let name: String = func.name.clone();
 
             info!("Loading parameter: {}", &name);
             if !def_params.contains(&name) {
@@ -752,19 +720,10 @@ impl VTubeStudioPlugin {
             let local_timestamps = self.extract_wave_pingpong_numbers(&func.func);
             timestamps = timestamps.union(&local_timestamps).cloned().collect();
 
-            let node = match evalexpr::build_operator_tree(&func.func[..]) {
-                Ok(calc) => calc,
-                Err(error) => {
-                    error!(
-                        "Skipping parameter '{}': invalid expression '{}': {}",
-                        name, func.func, error
-                    );
-                    continue;
-                }
-            };
-
-            precalc_fns.push((name, func.func.clone(), node));
+            expression_params.push(func);
         }
+
+        let precalc_fns = crate::eval::compile_expressions(&expression_params);
 
         info!("Tranformation config loaded");
         (precalc_fns, timestamps, new_params, delay_buffers)

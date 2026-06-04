@@ -6,7 +6,26 @@ fn main() {
     #[cfg(windows)]
     embed_resource::compile("embed_resources.rc");
 
+    generate_blendshapes();
     generate_credits();
+}
+
+fn generate_blendshapes() {
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let dest = std::path::Path::new(&out_dir).join("blendshapes.rs");
+
+    println!("cargo:rerun-if-changed=tracking_data");
+
+    let data = std::fs::read_to_string("tracking_data").unwrap();
+    let names: Vec<&str> = data.lines().filter(|l| !l.is_empty()).collect();
+
+    let entries: Vec<String> = names.iter().map(|n| format!("    \"{n}\"")).collect();
+    let code = format!(
+        "pub const BLENDSHAPE_NAMES: &[&str] = &[\n{}\n];\n",
+        entries.join(",\n")
+    );
+
+    std::fs::write(&dest, code).unwrap();
 }
 
 fn generate_credits() {

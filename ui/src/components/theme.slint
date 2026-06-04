@@ -1,0 +1,52 @@
+// Centralised design tokens for the whole UI. Reference everywhere so colours,
+// sizing and radii stay consistent (e.g. `Theme.accent`, `Theme.control-height`).
+export global Theme {
+    // Surfaces (darkest → lightest), neutral near-black.
+    out property <color> bg-window: #0d0d0e;
+    out property <color> bg-panel: #161618;
+    out property <color> bg-input: #111113;
+    out property <color> bg-disabled: #151517;
+    out property <color> bg-elevated: #222226;
+    out property <color> bg-hover: #2c2c30;
+
+    // Borders
+    out property <color> border: #29292d;
+    out property <color> border-strong: #3a3a3f;
+    out property <color> border-focus: #cf564e;
+
+    // Text
+    out property <color> text: #e8e5e6;
+    out property <color> text-dim: #97939a;
+    out property <color> text-muted: #65616a;
+    out property <color> placeholder: #54515a;
+
+    // Accent (primary actions, selection)
+    out property <color> accent: #cf4842;
+    out property <color> accent-hover: #df574f;
+    out property <color> accent-border: #df665d;
+    out property <color> accent-text: #fdeeec;
+    out property <color> highlight: #e07f78;
+
+    // Subtle / secondary buttons
+    out property <color> btn-bg: #222024;
+    out property <color> btn-hover: #322f34;
+
+    // Value meters (neutral, non-semantic)
+    out property <color> meter: #c2bcc2;
+    out property <color> meter-neg: #8c868e;
+
+    // Semantic
+    out property <color> good: #4cbf83;
+    out property <color> good-bg: #2c7d52;
+    out property <color> good-hover: #359463;
+    out property <color> good-border: #43a674;
+    out property <color> bad: #c44039;
+    out property <color> bad-bg: #401c1c;
+    out property <color> warn: #d6a23c;
+
+    // Metrics
+    out property <length> control-height: 32px;
+    out property <length> radius: 6px;
+    out property <length> radius-lg: 9px;
+    out property <length> gap: 8px;
+}

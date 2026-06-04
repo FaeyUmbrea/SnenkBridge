@@ -8,57 +8,6 @@ permissions:
   contents: write
 
 jobs:
-  build-cli:
-    name: Build CLI (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: snenk-bridge-cli-linux
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: snenk-bridge-cli-macos
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: snenk-bridge-cli-windows
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: cli-${{ matrix.target }}
-      - name: Build CLI release
-        run: cargo build --release --package snenk_bridge --target ${{ matrix.target }}
-      - name: Package artifact (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          mkdir -p dist
-          cp "target/${{ matrix.target }}/release/snenk_bridge" dist/snenk_bridge
-          tar -C dist -czf "dist/${{ matrix.artifact }}-${TAG}.tar.gz" snenk_bridge
-      - name: Package artifact (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          mkdir -p dist
-          cp "target/${{ matrix.target }}/release/snenk_bridge.exe" dist/snenk_bridge.exe
-          cd dist
-          7z a "${{ matrix.artifact }}-${TAG}.zip" snenk_bridge.exe
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.tar.gz
-            dist/${{ matrix.artifact }}-${{ github.event.release.tag_name }}.zip
-          fail_on_unmatched_files: false
-
   build-ui:
     name: Build UI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

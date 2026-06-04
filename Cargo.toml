@@ -5,6 +5,9 @@ edition = "2021"
 
 [workspace]
 members = ["ui", "service"]
+# The `snenk_bridge` CLI (this root package) is not part of the default build
+# output — only the UI ships. Build it explicitly with `-p snenk_bridge`.
+default-members = ["ui"]
 
 [dependencies]
 snenk_bridge_service = { path = "./service" }

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-cargo build -r --workspace
+cargo build -r -p snenk_bridge_ui
 
 mkdir -p "$SCRIPT_DIR/target/bundle"
 
@@ -20,8 +20,7 @@ case "$OS" in
         rm -rf "$APP_BUNDLE"
         mkdir -p "$MACOS_DIR" "$RESOURCES"
 
-        # Copy binaries
-        cp "$SCRIPT_DIR/target/release/snenk_bridge" "$MACOS_DIR/snenk_bridge"
+        # Copy the UI binary (the only shipped executable)
         cp "$SCRIPT_DIR/target/release/snenk_bridge_ui" "$MACOS_DIR/snenk_bridge_ui"
 
         ICON_ENTRY=""
@@ -56,21 +55,19 @@ PLIST
         # Ad-hoc codesign
         codesign --force --deep --sign - "$APP_BUNDLE"
 
-        # Also copy standalone binaries
-        cp "$SCRIPT_DIR/target/release/snenk_bridge" "$SCRIPT_DIR/target/bundle/snenk_bridge"
+        # Also copy the standalone UI binary
         cp "$SCRIPT_DIR/target/release/snenk_bridge_ui" "$SCRIPT_DIR/target/bundle/snenk_bridge_ui"
         cp "$SCRIPT_DIR/README.md" "$SCRIPT_DIR/target/bundle/README.md"
 
         echo "Built macOS app bundle: $APP_BUNDLE"
-        echo "Standalone binaries also in: $SCRIPT_DIR/target/bundle/"
+        echo "Standalone binary also in: $SCRIPT_DIR/target/bundle/"
         ;;
 
     Linux)
-        cp "$SCRIPT_DIR/target/release/snenk_bridge" "$SCRIPT_DIR/target/bundle/snenk_bridge"
         cp "$SCRIPT_DIR/target/release/snenk_bridge_ui" "$SCRIPT_DIR/target/bundle/snenk_bridge_ui"
         cp "$SCRIPT_DIR/README.md" "$SCRIPT_DIR/target/bundle/README.md"
 
-        echo "Built Linux binaries in: $SCRIPT_DIR/target/bundle/"
+        echo "Built Linux binary in: $SCRIPT_DIR/target/bundle/"
         ;;
 
     *)

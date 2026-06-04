@@ -1,0 +1,191 @@
+import { Theme } from "theme.slint";
+import { NameValuePair } from "common.slint";
+import { FacePreview, MeshPoint } from "face-preview.slint";
+
+component ValuePanel inherits Rectangle {
+    in property<string> title;
+    in property<[NameValuePair]> items;
+
+    background: Theme.bg-panel;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 4px;
+
+        // Title header
+        Text {
+            text: root.title;
+            color: #b07a7a;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            height: 20px;
+            vertical-alignment: center;
+        }
+
+        // Scrollable rows with a thin overlay scrollbar.
+        Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+
+            flick := Flickable {
+                width: parent.width;
+                height: parent.height;
+                viewport-height: rows-layout.preferred-height;
+
+                rows-layout := VerticalLayout {
+                    spacing: 2px;
+                    alignment: start;
+                    padding-right: 10px;
+
+                    for item in root.items : row := Rectangle {
+                        height: 32px;
+
+                        property <float> span: item.max - item.min;
+                        property <float> fill: row.span <= 0
+                            ? 0
+                            : Math.clamp((item.value - item.min) / row.span, 0, 1);
+                        property <float> zero-frac: row.span <= 0
+                            ? 0
+                            : Math.clamp((0 - item.min) / row.span, 0, 1);
+
+                        VerticalLayout {
+                            spacing: 2px;
+
+                            HorizontalLayout {
+                                spacing: 4px;
+
+                                Text {
+                                    text: item.name;
+                                    color: #8888aa;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: left;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    text: Math.round(item.value * 100) / 100 + "";
+                                    color: #c8c8e0;
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: right;
+                                    min-width: 50px;
+                                }
+                            }
+
+                            // Meter track + fill
+                            track := Rectangle {
+                                height: 5px;
+                                border-radius: 2.5px;
+                                background: Theme.bg-input;
+
+                                Rectangle {
+                                    x: track.width * Math.min(row.zero-frac, row.fill);
+                                    width: track.width * Math.abs(row.fill - row.zero-frac);
+                                    height: parent.height;
+                                    border-radius: 2.5px;
+                                    background: row.fill >= row.zero-frac ? Theme.meter : Theme.meter-neg;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Thin overlay scrollbar — only shown when the list overflows.
+            if flick.viewport-height > flick.height : Rectangle {
+                x: parent.width - 5px;
+                width: 4px;
+                background: Theme.bg-input;
+                border-radius: 2px;
+
+                Rectangle {
+                    x: 0;
+                    width: parent.width;
+                    border-radius: 2px;
+                    background: Theme.border-strong;
+                    height: max(28px, parent.height * (flick.height / flick.viewport-height));
+                    y: (parent.height - self.height)
+                        * ((-flick.viewport-y) / (flick.viewport-height - flick.height));
+                }
+            }
+        }
+    }
+}
+
+export component PreviewTab inherits Rectangle {
+    in property<[NameValuePair]> input-shapes;
+    in property<[NameValuePair]> output-params;
+    in property<[MeshPoint]> mesh-points;
+    in property<string> wireframe;
+    in property<bool> paused;
+
+    background: transparent;
+
+    HorizontalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        // Left panel: INPUT SHAPES (~1 ratio)
+        ValuePanel {
+            title: "INPUT SHAPES";
+            items: root.input-shapes;
+            horizontal-stretch: 1;
+        }
+
+        // Center: live face rig (~3 ratio)
+        Rectangle {
+            horizontal-stretch: 3;
+            background: Theme.bg-panel;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+            clip: true;
+
+            FacePreview {
+                width: parent.width;
+                height: parent.height;
+                points: root.mesh-points;
+                wireframe: root.wireframe;
+                opacity: root.paused ? 0.25 : 1.0;
+            }
+
+            // Paused overlay — shown when the preview is suspended because the
+            // window lost focus, so it doesn't look broken.
+            if root.paused : Rectangle {
+                background: #0b0b0ccc;
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+
+                    Text {
+                        text: "Preview paused";
+                        color: #c8c8e0;
+                        font-size: 15px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Click the window to resume";
+                        color: #8888aa;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Right panel: OUTPUT PARAMS (~1 ratio)
+        ValuePanel {
+            title: "OUTPUT PARAMS";
+            items: root.output-params;
+            horizontal-stretch: 1;
+        }
+    }
+}

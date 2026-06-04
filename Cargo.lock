@@ -4627,6 +4627,7 @@ dependencies = [
  "dirs",
  "embed-resource",
  "evalexpr",
+ "i-slint-backend-winit",
  "log",
  "log4rs",
  "rfd",

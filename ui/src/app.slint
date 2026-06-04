@@ -1,323 +1,25 @@
-import { ComboBox } from "std-widgets.slint";
+import { Theme } from "components/theme.slint";
+import { StyledInput, Btn, FieldLabel, UnitLabel, StatusBadge, Card, StyledCombo, GroupTag, VCenter, NameValuePair, EditorParam, VarEntry } from "components/common.slint";
+import { AboutWindow, ImportDialog, NewPresetDialog, UnsavedChangesDialog, ActiveConnectionDialog, VariablesWindow } from "components/dialogs.slint";
+import { ConnectionBar } from "components/connection-bar.slint";
+import { PreviewTab } from "components/preview-tab.slint";
+import { MeshPoint } from "components/face-preview.slint";
+import { EditorTab } from "components/editor-tab.slint";
 
-component StyledInput inherits Rectangle {
-    in property<string> placeholder;
-    in-out property<string> text <=> input.text;
-    in property<bool> enabled: true;
-    in property<bool> round-right: true;
-    in property<bool> round-left: true;
-
-    callback edited(string);
-
-    border-top-left-radius: root.round-left ? 6px : 0;
-    border-bottom-left-radius: root.round-left ? 6px : 0;
-    border-top-right-radius: root.round-right ? 6px : 0;
-    border-bottom-right-radius: root.round-right ? 6px : 0;
-    border-width: 1px;
-    border-color: root.enabled ? (input.has-focus ? #6c6cb5 : #444466) : #2d2d44;
-    background: root.enabled ? #141426 : #161628;
-    height: 34px;
-
-    input := TextInput {
-        x: 10px;
-        y: 0;
-        width: parent.width - 20px;
-        height: parent.height;
-        vertical-alignment: center;
-        color: root.enabled ? #d4d4e8 : #555570;
-        font-size: 13px;
-        enabled: root.enabled;
-        edited => { root.edited(self.text); }
-    }
-
-    if input.text == "" : Text {
-        x: 10px;
-        vertical-alignment: center;
-        color: #4a4a6a;
-        font-size: 13px;
-        text: root.placeholder;
-    }
-}
-
-component Btn inherits Rectangle {
-    in property<string> label;
-    in property<bool> enabled: true;
-    in property<color> base-bg: #3d3d6b;
-    in property<color> hover-bg: #4d4d80;
-    in property<color> base-border: #4a4a7a;
-    in property<color> hover-border: #6c6cb5;
-    in property<color> text-color: #c8c8e0;
-    in property<bool> round-left: true;
-    in property<bool> round-right: true;
-
-    callback clicked;
-
-    border-top-left-radius: root.round-left ? 6px : 0;
-    border-bottom-left-radius: root.round-left ? 6px : 0;
-    border-top-right-radius: root.round-right ? 6px : 0;
-    border-bottom-right-radius: root.round-right ? 6px : 0;
-    border-width: 1px;
-    border-color: touch.has-hover && root.enabled ? root.hover-border : root.base-border;
-    background: touch.has-hover && root.enabled ? root.hover-bg : root.base-bg;
-    height: 34px;
-    opacity: root.enabled ? 1.0 : 0.4;
-
-    touch := TouchArea {
-        enabled: root.enabled;
-        clicked => { root.clicked(); }
-    }
-
-    Text {
-        text: root.label;
-        color: root.text-color;
-        font-size: 13px;
-        font-weight: 500;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-}
-
-component FieldLabel inherits Text {
-    color: #8888aa;
-    font-size: 12px;
-    vertical-alignment: center;
-    min-width: 62px;
-}
-
-component UnitLabel inherits Text {
-    color: #555570;
-    font-size: 12px;
-    vertical-alignment: center;
-}
-
-component StatusBadge inherits HorizontalLayout {
-    in property<color> dot-color: #555570;
-    in property<string> label: "Disconnected";
-
-    spacing: 5px;
-    alignment: center;
-
-    Rectangle {
-        width: 7px;
-        height: 7px;
-        border-radius: 3.5px;
-        background: root.dot-color;
-    }
-
-    Text {
-        text: root.label;
-        color: root.dot-color;
-        font-size: 11px;
-        vertical-alignment: center;
-    }
-}
-
-component Card inherits Rectangle {
-    background: #1e1e30;
-    border-radius: 10px;
-    border-width: 1px;
-    border-color: #2a2a44;
-
-    VerticalLayout {
-        padding: 14px;
-        spacing: 8px;
-
-        @children
-    }
-}
-
-component StyledCombo inherits ComboBox {
-    height: 34px;
-}
-
-export component AboutWindow inherits Window {
-    title: "About SnenkBridge";
-    default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
-    default-font-size: 13px;
-    min-width: 400px;
-    min-height: 350px;
-    preferred-width: 400px;
-    preferred-height: 400px;
-    background: #141422;
-
-    in property<string> credits-text;
-
-    VerticalLayout {
-        padding: 16px;
-        spacing: 12px;
-
-        Text {
-            text: "SnenkBridge";
-            color: #c8c8e0;
-            font-size: 18px;
-            font-weight: 700;
-        }
-
-        Text {
-            text: "github.com/FaeyUmbrea/SnenkBridge";
-            color: #6c6cb5;
-            font-size: 12px;
-        }
-
-        Rectangle { height: 1px; background: #2a2a44; }
-
-        Text {
-            text: "Presets";
-            color: #8888aa;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        Text {
-            text: "Maruseu VBridger and Maruseu Enhanced presets based on presets by Maruseu (github.com/maruseu/VitaminsPresets), included with permission. These presets are not covered by the project's GPL license.";
-            color: #777799;
-            font-size: 11px;
-            wrap: word-wrap;
-        }
-
-        Rectangle { height: 1px; background: #2a2a44; }
-
-        Text {
-            text: "Dependencies";
-            color: #8888aa;
-            font-size: 12px;
-            font-weight: 700;
-        }
-
-        Flickable {
-            vertical-stretch: 1;
-            viewport-height: deps-text.preferred-height;
-            deps-text := Text {
-                text: root.credits-text;
-                color: #555570;
-                font-size: 10px;
-                wrap: word-wrap;
-                width: parent.width;
-            }
-        }
-    }
-}
-
-export component ImportDialog inherits Window {
-    title: "Import Preset";
-    default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
-    default-font-size: 13px;
-    min-width: 380px;
-    min-height: 260px;
-    preferred-width: 380px;
-    preferred-height: 260px;
-    background: #141422;
-
-    in-out property<string> preset-title;
-    in-out property<string> preset-author;
-    in-out property<string> preset-description;
-    in-out property<bool> show-swap-toggle: false;
-    in-out property<bool> swap-xy: false;
-
-    callback do-import();
-    callback do-cancel();
-
-    VerticalLayout {
-        padding: 16px;
-        spacing: 10px;
-
-        Text {
-            text: "Import Preset";
-            color: #c8c8e0;
-            font-size: 15px;
-            font-weight: 700;
-        }
-
-        HorizontalLayout {
-            spacing: 10px;
-            FieldLabel { text: "Title"; }
-            StyledInput {
-                text <=> root.preset-title;
-                placeholder: "Preset name";
-                horizontal-stretch: 1;
-            }
-        }
-
-        HorizontalLayout {
-            spacing: 10px;
-            FieldLabel { text: "Author"; }
-            StyledInput {
-                text <=> root.preset-author;
-                placeholder: "Optional";
-                horizontal-stretch: 1;
-            }
-        }
-
-        HorizontalLayout {
-            spacing: 10px;
-            FieldLabel { text: "Desc"; }
-            StyledInput {
-                text <=> root.preset-description;
-                placeholder: "Optional";
-                horizontal-stretch: 1;
-            }
-        }
-
-        if root.show-swap-toggle : HorizontalLayout {
-            spacing: 10px;
-            FieldLabel { text: ""; }
-            TouchArea {
-                width: 16px;
-                height: 16px;
-                clicked => { root.swap-xy = !root.swap-xy; }
-                Rectangle {
-                    width: 14px;
-                    height: 14px;
-                    border-width: 1px;
-                    border-radius: 3px;
-                    border-color: #6c6cb5;
-                    background: root.swap-xy ? #4a4a8a : transparent;
-                }
-            }
-            Text {
-                text: "Swap pitch/yaw X/Y alignment";
-                color: #8888aa;
-                font-size: 12px;
-                vertical-alignment: center;
-            }
-        }
-
-        Rectangle { vertical-stretch: 1; }
-
-        HorizontalLayout {
-            alignment: end;
-            spacing: 8px;
-            Btn {
-                label: "Cancel";
-                width: 80px;
-                base-bg: #2a2a48;
-                hover-bg: #3a3a5c;
-                base-border: #3d3d5c;
-                hover-border: #6c6cb5;
-                clicked => { root.do-cancel(); }
-            }
-            Btn {
-                label: "Import";
-                width: 80px;
-                base-bg: #4a4a8a;
-                hover-bg: #5c5ca0;
-                base-border: #6c6cb5;
-                hover-border: #8888dd;
-                text-color: #e0e0ff;
-                clicked => { root.do-import(); }
-            }
-        }
-    }
-}
+export { AboutWindow, ImportDialog, NewPresetDialog, UnsavedChangesDialog, ActiveConnectionDialog, VariablesWindow }
+export { NameValuePair }
+export { EditorParam }
+export { VarEntry }
 
 export component App inherits Window {
     title: "SnenkBridge";
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
-    min-width: 480px;
-    min-height: 420px;
-    preferred-width: 480px;
-    preferred-height: 420px;
-    background: #141422;
+    min-width: 1040px;
+    min-height: 560px;
+    preferred-width: 1320px;
+    preferred-height: 820px;
+    background: Theme.bg-window;
 
     in-out property<int> preset-index: 0;
     in property<[string]> preset-names: ["Default"];
@@ -336,6 +38,29 @@ export component App inherits Window {
     in-out property<color> target-status-color: #cc4444;
     in-out property<string> error-text;
 
+    // New properties
+    in-out property<int> active-tab: 0;
+    in property<[NameValuePair]> input-shapes: [];
+    in property<[NameValuePair]> output-params: [];
+    in property<[MeshPoint]> mesh-points;
+    in property<string> mesh-wireframe;
+    in property<bool> preview-paused: false;
+
+    in-out property<string> editor-title;
+    in-out property<string> editor-author;
+    in-out property<string> editor-description;
+    in-out property<[EditorParam]> editor-params: [];
+    in property<[string]> editor-param-errors: [];
+    in-out property<bool> has-unsaved-changes: false;
+
+    callback editor-param-changed(int, EditorParam);
+    callback editor-add-param();
+    callback editor-add-delay-param();
+    callback editor-delete-param(int);
+    callback editor-metadata-changed();
+    callback editor-save();
+    callback editor-show-variables();
+
     callback import-preset();
     callback export-preset();
     callback delete-preset();
@@ -343,228 +68,191 @@ export component App inherits Window {
     callback toggle-target();
     callback settings-changed();
     callback show-about();
+    callback new-preset();
 
     VerticalLayout {
-        padding: 14px;
-        padding-top: 10px;
-        spacing: 8px;
+        padding: 0px;
+        spacing: 0px;
 
-        // Header
-        HorizontalLayout {
-            alignment: space-between;
-            height: 20px;
-            Text {
-                text: "SnenkBridge";
-                color: #6c6cb5;
-                font-size: 13px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
-            TouchArea {
-                width: 40px;
-                clicked => { root.show-about(); }
-                Text {
-                    text: "About";
-                    color: parent.has-hover ? #8888bb : #444466;
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
-        }
+        // Top bar surface: tabs · preset management · about
+        Rectangle {
+            height: 48px;
+            background: Theme.bg-panel;
 
-        // Source card
-        Card {
-            HorizontalLayout {
-                alignment: space-between;
-                Text {
-                    text: "SOURCE";
-                    color: #6c6cb5;
-                    font-size: 11px;
-                    font-weight: 700;
-                    letter-spacing: 0.8px;
-                    vertical-alignment: center;
-                }
-                StatusBadge {
-                    dot-color: root.source-status-color;
-                    label: root.source-status;
-                }
+            // Bottom hairline
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.border;
             }
 
-            HorizontalLayout {
-                spacing: 10px;
-                FieldLabel { text: "Phone IP"; }
-                StyledInput {
-                    placeholder: "192.168.1.71";
-                    text <=> root.phone-ip;
-                    enabled: !root.source-active;
-                    horizontal-stretch: 1;
-                    edited(val) => { root.settings-changed(); }
-                }
-            }
+            VerticalLayout {
+                alignment: center;
 
-            HorizontalLayout {
-                spacing: 10px;
-                FieldLabel { text: "Tracking"; }
-                StyledCombo {
-                    model: ["VTubeStudio", "IFacialMocap"];
-                    current-index <=> root.tracking-type-index;
-                    enabled: !root.source-active;
-                    width: 160px;
-                    selected(val) => { root.settings-changed(); }
-                }
-                Rectangle { horizontal-stretch: 1; }
-                FieldLabel { text: "Timeout"; min-width: 0; }
-                StyledInput {
-                    placeholder: "3000";
-                    text <=> root.face-search-timeout;
-                    enabled: !root.source-active;
-                    width: 64px;
-                    edited(val) => { root.settings-changed(); }
-                }
-                UnitLabel { text: "ms"; }
-            }
-
-            HorizontalLayout {
-                alignment: end;
-                if !root.source-active : Btn {
-                    label: "Connect";
-                    base-bg: #4a4a8a;
-                    hover-bg: #5c5ca0;
-                    base-border: #6c6cb5;
-                    hover-border: #8888dd;
-                    text-color: #e0e0ff;
-                    width: 100px;
-                    clicked => { root.toggle-source(); }
-                }
-                if root.source-active : Btn {
-                    label: "Disconnect";
-                    base-bg: #6b2a2a;
-                    hover-bg: #883838;
-                    base-border: #994444;
-                    hover-border: #bb5555;
-                    text-color: #ffcccc;
-                    width: 100px;
-                    clicked => { root.toggle-source(); }
-                }
-            }
-        }
-
-        // Target card
-        Card {
-            HorizontalLayout {
-                alignment: space-between;
-                Text {
-                    text: "TARGET";
-                    color: #6c6cb5;
-                    font-size: 11px;
-                    font-weight: 700;
-                    letter-spacing: 0.8px;
-                    vertical-alignment: center;
-                }
-                StatusBadge {
-                    dot-color: root.target-status-color;
-                    label: root.target-status;
-                }
-            }
-
-            HorizontalLayout {
+                HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 12px;
                 spacing: 6px;
-                FieldLabel { text: "Preset"; }
+
+                // Tab pills
+                VCenter {
+                    HorizontalLayout {
+                        spacing: 4px;
+
+                        tab0 := Rectangle {
+                            width: 82px;
+                            height: Theme.control-height;
+                            border-radius: Theme.radius;
+                            background: root.active-tab == 0
+                                ? Theme.accent
+                                : (t0.has-hover ? Theme.bg-elevated : transparent);
+                            t0 := TouchArea { clicked => { root.active-tab = 0; } }
+                            Text {
+                                text: "Preview";
+                                color: root.active-tab == 0 ? Theme.accent-text : Theme.text-dim;
+                                font-size: 12px;
+                                font-weight: root.active-tab == 0 ? 600 : 400;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        tab1 := Rectangle {
+                            width: 82px;
+                            height: Theme.control-height;
+                            border-radius: Theme.radius;
+                            background: root.active-tab == 1
+                                ? Theme.accent
+                                : (t1.has-hover ? Theme.bg-elevated : transparent);
+                            t1 := TouchArea { clicked => { root.active-tab = 1; } }
+                            Text {
+                                text: "Editor";
+                                color: root.active-tab == 1 ? Theme.accent-text : Theme.text-dim;
+                                font-size: 12px;
+                                font-weight: root.active-tab == 1 ? 600 : 400;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { width: 18px; }
+
+                // Preset management
+                VCenter { GroupTag { label: "PRESET"; } }
                 StyledCombo {
                     model: root.preset-names;
                     current-index <=> root.preset-index;
                     enabled: !root.target-active;
-                    horizontal-stretch: 1;
+                    width: 184px;
                     selected(val) => { root.settings-changed(); }
+                }
+                Btn {
+                    label: "New";
+                    enabled: !root.target-active;
+                    width: 50px;
+                    clicked => { root.new-preset(); }
                 }
                 Btn {
                     label: "Import";
                     enabled: !root.target-active;
                     width: 64px;
-                    base-bg: #2a2a48;
-                    hover-bg: #3a3a5c;
-                    base-border: #3d3d5c;
-                    hover-border: #6c6cb5;
                     clicked => { root.import-preset(); }
                 }
                 Btn {
                     label: "Export";
                     enabled: !root.target-active;
                     width: 64px;
-                    base-bg: #2a2a48;
-                    hover-bg: #3a3a5c;
-                    base-border: #3d3d5c;
-                    hover-border: #6c6cb5;
                     clicked => { root.export-preset(); }
                 }
                 if root.can-delete-preset : Btn {
-                    label: "Del";
+                    label: "Delete";
                     enabled: !root.target-active;
-                    width: 40px;
-                    base-bg: #3a2020;
-                    hover-bg: #6b2a2a;
-                    base-border: #4a2a2a;
-                    hover-border: #994444;
-                    text-color: #cc8888;
+                    width: 60px;
+                    base-bg: Theme.bad-bg;
+                    hover-bg: #7a3030;
+                    base-border: #6a3434;
+                    hover-border: Theme.bad;
+                    text-color: #f0bcbc;
                     clicked => { root.delete-preset(); }
                 }
-            }
 
-            HorizontalLayout {
-                spacing: 10px;
-                FieldLabel { text: "VTS IP"; }
-                StyledInput {
-                    placeholder: "localhost";
-                    text <=> root.vts-ip;
-                    enabled: !root.target-active;
-                    horizontal-stretch: 1;
-                    edited(val) => { root.settings-changed(); }
-                }
-                FieldLabel { text: "Port"; min-width: 0; }
-                StyledInput {
-                    placeholder: "8001";
-                    text <=> root.vts-port;
-                    enabled: !root.target-active;
-                    width: 64px;
-                    edited(val) => { root.settings-changed(); }
-                }
-            }
+                // Spacer
+                Rectangle { horizontal-stretch: 1; }
 
-            HorizontalLayout {
-                alignment: end;
-                if !root.target-active : Btn {
-                    label: "Connect";
-                    base-bg: #4a4a8a;
-                    hover-bg: #5c5ca0;
-                    base-border: #6c6cb5;
-                    hover-border: #8888dd;
-                    text-color: #e0e0ff;
-                    width: 100px;
-                    clicked => { root.toggle-target(); }
+                // About link
+                TouchArea {
+                    width: 48px;
+                    about-text := Text {
+                        text: "About";
+                        color: parent.has-hover ? Theme.text-dim : Theme.text-muted;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    clicked => { root.show-about(); }
                 }
-                if root.target-active : Btn {
-                    label: "Disconnect";
-                    base-bg: #6b2a2a;
-                    hover-bg: #883838;
-                    base-border: #994444;
-                    hover-border: #bb5555;
-                    text-color: #ffcccc;
-                    width: 100px;
-                    clicked => { root.toggle-target(); }
                 }
             }
         }
 
-        // Spacer pushes error to bottom
-        Rectangle { vertical-stretch: 1; }
+        // Tab content (stretch)
+        if root.active-tab == 0 : PreviewTab {
+            vertical-stretch: 1;
+            input-shapes: root.input-shapes;
+            output-params: root.output-params;
+            mesh-points: root.mesh-points;
+            wireframe: root.mesh-wireframe;
+            paused: root.preview-paused;
+        }
 
-        // Error
-        if root.error-text != "" : Text {
-            text: root.error-text;
-            color: #e05a5a;
-            font-size: 12px;
-            horizontal-alignment: center;
+        if root.active-tab == 1 : EditorTab {
+            vertical-stretch: 1;
+            preset-title <=> root.editor-title;
+            preset-author <=> root.editor-author;
+            preset-description <=> root.editor-description;
+            params <=> root.editor-params;
+            param-errors: root.editor-param-errors;
+            has-unsaved-changes: root.has-unsaved-changes;
+            param-changed(idx, p) => { root.editor-param-changed(idx, p); }
+            add-param => { root.editor-add-param(); }
+            add-delay-param => { root.editor-add-delay-param(); }
+            delete-param(idx) => { root.editor-delete-param(idx); }
+            metadata-changed => { root.editor-metadata-changed(); }
+            save => { root.editor-save(); }
+            show-variables => { root.editor-show-variables(); }
+        }
+
+        // Connection bar
+        ConnectionBar {
+            phone-ip <=> root.phone-ip;
+            tracking-type-index <=> root.tracking-type-index;
+            face-search-timeout <=> root.face-search-timeout;
+            source-active <=> root.source-active;
+            source-status <=> root.source-status;
+            source-status-color <=> root.source-status-color;
+
+            vts-ip <=> root.vts-ip;
+            vts-port <=> root.vts-port;
+            target-active <=> root.target-active;
+            target-status <=> root.target-status;
+            target-status-color <=> root.target-status-color;
+
+            toggle-source => { root.toggle-source(); }
+            toggle-target => { root.toggle-target(); }
+            settings-changed => { root.settings-changed(); }
+        }
+
+        // Error text
+        if root.error-text != "" : Rectangle {
+            height: 24px;
+            Text {
+                text: root.error-text;
+                color: #e05a5a;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
         }
     }
 }

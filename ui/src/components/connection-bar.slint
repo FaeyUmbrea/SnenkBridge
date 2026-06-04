@@ -1,0 +1,158 @@
+import { Theme } from "theme.slint";
+import { StyledInput, Btn, UnitLabel, StatusBadge, StyledCombo, GroupTag, VCenter, Field } from "common.slint";
+
+// Primary connect / disconnect action button.
+component ActionBtn inherits Btn {
+    in property<bool> active;
+    width: 104px;
+    label: root.active ? "Disconnect" : "Connect";
+    base-bg: root.active ? Theme.bad-bg : Theme.good-bg;
+    hover-bg: root.active ? #5a2626 : Theme.good-hover;
+    base-border: root.active ? Theme.bad : Theme.good-border;
+    hover-border: root.active ? #d6655c : #54bd8a;
+    text-color: root.active ? #f4cbcb : #eafff2;
+}
+
+export component ConnectionBar inherits Rectangle {
+    // Source (tracking input)
+    in-out property<string> phone-ip;
+    in-out property<int> tracking-type-index;
+    in-out property<string> face-search-timeout;
+    in-out property<bool> source-active;
+    in-out property<string> source-status;
+    in-out property<color> source-status-color;
+
+    // Target (VTube Studio output)
+    in-out property<string> vts-ip;
+    in-out property<string> vts-port;
+    in-out property<bool> target-active;
+    in-out property<string> target-status;
+    in-out property<color> target-status-color;
+
+    callback toggle-source();
+    callback toggle-target();
+    callback settings-changed();
+
+    background: transparent;
+    height: 106px;
+
+    VerticalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-bottom: 8px;
+
+        Rectangle {
+            background: Theme.bg-panel;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            VerticalLayout {
+                padding-top: 8px;
+                padding-bottom: 8px;
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+
+                // ---- SOURCE (tracking) ----
+                HorizontalLayout {
+                    spacing: 14px;
+
+                    VCenter { GroupTag { label: "SOURCE"; } }
+
+                    Field {
+                        label: "Phone IP";
+                        StyledInput {
+                            placeholder: "192.168.1.71";
+                            text <=> root.phone-ip;
+                            enabled: !root.source-active;
+                            width: 132px;
+                            edited(val) => { root.settings-changed(); }
+                        }
+                    }
+
+                    Field {
+                        label: "Source";
+                        StyledCombo {
+                            model: ["VTubeStudio", "IFacialMocap"];
+                            current-index <=> root.tracking-type-index;
+                            enabled: !root.source-active;
+                            width: 140px;
+                            selected(val) => { root.settings-changed(); }
+                        }
+                    }
+
+                    Field {
+                        label: "Timeout";
+                        StyledInput {
+                            placeholder: "3000";
+                            text <=> root.face-search-timeout;
+                            enabled: !root.source-active;
+                            width: 54px;
+                            edited(val) => { root.settings-changed(); }
+                        }
+                        VCenter { UnitLabel { text: "ms"; } }
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    VCenter {
+                        StatusBadge {
+                            dot-color: root.source-status-color;
+                            label: root.source-status;
+                        }
+                    }
+                    ActionBtn {
+                        active: root.source-active;
+                        clicked => { root.toggle-source(); }
+                    }
+                }
+
+                // Divider
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // ---- TARGET (VTube Studio) ----
+                HorizontalLayout {
+                    spacing: 14px;
+
+                    VCenter { GroupTag { label: "TARGET"; } }
+
+                    Field {
+                        label: "VTS IP";
+                        StyledInput {
+                            placeholder: "localhost";
+                            text <=> root.vts-ip;
+                            enabled: !root.target-active;
+                            width: 132px;
+                            edited(val) => { root.settings-changed(); }
+                        }
+                    }
+
+                    Field {
+                        label: "Port";
+                        StyledInput {
+                            placeholder: "8001";
+                            text <=> root.vts-port;
+                            enabled: !root.target-active;
+                            width: 54px;
+                            edited(val) => { root.settings-changed(); }
+                        }
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    VCenter {
+                        StatusBadge {
+                            dot-color: root.target-status-color;
+                            label: root.target-status;
+                        }
+                    }
+                    ActionBtn {
+                        active: root.target-active;
+                        clicked => { root.toggle-target(); }
+                    }
+                }
+            }
+        }
+    }
+}
