@@ -179,7 +179,7 @@ pub fn list_presets(dir: &Path) -> Vec<SnekPreset> {
         .filter_map(|e| load_preset(&e.path()).ok())
         .collect();
 
-    presets.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    presets.sort_by_key(|p| p.title.to_lowercase());
     presets
 }
 

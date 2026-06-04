@@ -423,7 +423,7 @@ fn rename_variables(expr: &str) -> String {
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    sorted.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    sorted.sort_by_key(|e| std::cmp::Reverse(e.0.len()));
 
     let mut result = expr.to_string();
     for (from, to) in &sorted {

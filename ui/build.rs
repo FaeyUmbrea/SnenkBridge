@@ -83,7 +83,7 @@ fn generate_credits() {
         }
     }
 
-    credits.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    credits.sort_by_key(|c| c.0.to_lowercase());
 
     let mut lines = Vec::new();
     for (name, version, license) in &credits {
