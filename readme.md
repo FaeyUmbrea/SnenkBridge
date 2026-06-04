@@ -8,7 +8,7 @@ There's a built-in editor with a live preview, so you can shape the mapping and 
 
 ## Support
 
-Snenk Bridge is free and I work on it in my spare time. If it's useful to you and you'd like to chip in, you can support it here: **[your support page](SUPPORT_URL)**. Completely optional — it just helps me keep building.
+Snenk Bridge is free and I work on it in my spare time. If it's useful to you and you'd like to chip in, you can support it [here](https://github.com/sponsors/FaeyUmbrea). Completely optional — it just helps me keep building.
 
 ## Supported Tracking Apps
 
