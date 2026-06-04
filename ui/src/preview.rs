@@ -128,7 +128,11 @@ pub fn eval_outputs(values: &HashMap<String, f64>, advance: bool) -> Vec<NameVal
         let mut output: Vec<NameValuePair> = results
             .iter()
             .map(|r| {
-                let (min, max) = st.ranges.get(r.name.as_str()).copied().unwrap_or((0.0, 1.0));
+                let (min, max) = st
+                    .ranges
+                    .get(r.name.as_str())
+                    .copied()
+                    .unwrap_or((0.0, 1.0));
                 NameValuePair {
                     name: r.name.clone().into(),
                     value: r.value as f32,

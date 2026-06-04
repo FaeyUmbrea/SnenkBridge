@@ -138,11 +138,7 @@ mod tests {
 
     #[test]
     fn evaluate_arithmetic_expression() {
-        let params = vec![make_param(
-            "Result",
-            "(JawOpen - MouthClose) * 0.5",
-            0.0,
-        )];
+        let params = vec![make_param("Result", "(JawOpen - MouthClose) * 0.5", 0.0)];
         let compiled = compile_expressions(&params);
         assert_eq!(compiled.len(), 1);
 

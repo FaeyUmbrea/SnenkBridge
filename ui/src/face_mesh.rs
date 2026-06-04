@@ -76,8 +76,20 @@ fn base_mesh(p: &FaceParams) -> Mesh {
 
     // Eyes. Vertical radius collapses as the eye closes.
     let eye_ry = |open: f32| 0.03 + open.clamp(0.0, 1.0) * 0.08;
-    m.ring([-0.28, -0.14, 0.10], [0.16, eye_ry(p.eye_open_l)], [0.0, TAU], 12, true);
-    m.ring([0.28, -0.14, 0.10], [0.16, eye_ry(p.eye_open_r)], [0.0, TAU], 12, true);
+    m.ring(
+        [-0.28, -0.14, 0.10],
+        [0.16, eye_ry(p.eye_open_l)],
+        [0.0, TAU],
+        12,
+        true,
+    );
+    m.ring(
+        [0.28, -0.14, 0.10],
+        [0.16, eye_ry(p.eye_open_r)],
+        [0.0, TAU],
+        12,
+        true,
+    );
 
     // Brows — top arcs that rise with the brow value.
     let mut brow = |x: f32, raise: f32| {

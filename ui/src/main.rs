@@ -157,7 +157,9 @@ fn main() {
                     let loaded_preset_clone = Rc::clone(&loaded_preset);
                     let input_model_clone = Rc::clone(&input_model);
                     dialog.on_do_save(move || {
-                        let Some(dlg) = dialog_weak.upgrade() else { return };
+                        let Some(dlg) = dialog_weak.upgrade() else {
+                            return;
+                        };
                         let Some(ui) = ui_weak.upgrade() else { return };
                         // Save current editor state before switching
                         let snek = build_snek_from_editor(&ui);
@@ -182,7 +184,9 @@ fn main() {
                     let loaded_preset_clone2 = Rc::clone(&loaded_preset);
                     let input_model_clone2 = Rc::clone(&input_model);
                     dialog.on_do_discard(move || {
-                        let Some(dlg) = dialog_weak2.upgrade() else { return };
+                        let Some(dlg) = dialog_weak2.upgrade() else {
+                            return;
+                        };
                         let Some(ui) = ui_weak2.upgrade() else { return };
                         ui.set_has_unsaved_changes(false);
                         load_preset_into_editor(
@@ -191,7 +195,11 @@ fn main() {
                             &editor_params_model_clone2,
                             &loaded_preset_clone2,
                         );
-                        refresh_editor_preview(&ui, &editor_params_model_clone2, &input_model_clone2);
+                        refresh_editor_preview(
+                            &ui,
+                            &editor_params_model_clone2,
+                            &input_model_clone2,
+                        );
                         let _ = dlg.hide();
                     });
                     let dialog_weak3 = dialog.as_weak();
@@ -227,7 +235,9 @@ fn main() {
     {
         let editor_params_model = Rc::clone(&editor_params_model);
         app.on_editor_show_variables(move || {
-            let Ok(win) = VariablesWindow::new() else { return };
+            let Ok(win) = VariablesWindow::new() else {
+                return;
+            };
 
             let header = |t: &str| VarEntry {
                 name: t.into(),
@@ -256,7 +266,10 @@ fn main() {
             entries.push(header("Special"));
             entries.push(item("FaceFound", "1 while a face is tracked, else 0"));
             entries.push(item("Wave⟨ms⟩", "0→1→0 triangle over ⟨ms⟩, e.g. Wave2000"));
-            entries.push(item("PingPong⟨ms⟩", "0→1 sawtooth over ⟨ms⟩, e.g. PingPong1000"));
+            entries.push(item(
+                "PingPong⟨ms⟩",
+                "0→1 sawtooth over ⟨ms⟩, e.g. PingPong1000",
+            ));
 
             // The current preset's own params, usable as delay-buffer references.
             let names: Vec<String> = (0..editor_params_model.row_count())
@@ -565,14 +578,12 @@ fn main() {
 
             // Populate base preset names: "Empty" + all existing presets
             let list = preset_list.lock().unwrap();
-            let mut base_names: Vec<slint::SharedString> =
-                vec![slint::SharedString::from("Empty")];
+            let mut base_names: Vec<slint::SharedString> = vec![slint::SharedString::from("Empty")];
             for entry in list.iter() {
                 base_names.push(entry.name.clone().into());
             }
             drop(list);
-            dialog
-                .set_base_preset_names(Rc::new(slint::VecModel::from(base_names)).into());
+            dialog.set_base_preset_names(Rc::new(slint::VecModel::from(base_names)).into());
             dialog.set_base_preset_index(0);
             dialog.set_preset_title("New Preset".into());
             dialog.set_preset_author("".into());
@@ -587,7 +598,9 @@ fn main() {
                 let loaded_preset = Rc::clone(&loaded_preset);
                 let input_model = Rc::clone(&input_model);
                 dialog.on_do_create(move || {
-                    let Some(dlg) = dialog_weak.upgrade() else { return };
+                    let Some(dlg) = dialog_weak.upgrade() else {
+                        return;
+                    };
                     let Some(ui) = ui_weak.upgrade() else { return };
 
                     let title = dlg.get_preset_title().to_string();
@@ -625,8 +638,7 @@ fn main() {
                     match preset::save_preset(&dir, &snek) {
                         Ok(_) => {
                             let entries = refresh_preset_list(&ui);
-                            let new_idx =
-                                entries.iter().position(|e| e.name == title).unwrap_or(0);
+                            let new_idx = entries.iter().position(|e| e.name == title).unwrap_or(0);
                             *preset_list.lock().unwrap() = entries;
                             ui.set_preset_index(i32::try_from(new_idx).unwrap_or(0));
                             ui.set_can_delete_preset(true);
@@ -1107,8 +1119,8 @@ fn main() {
             };
 
             let has_unsaved = ui.get_has_unsaved_changes();
-            let is_connected = source_active.load(Ordering::Relaxed)
-                || target_active.load(Ordering::Relaxed);
+            let is_connected =
+                source_active.load(Ordering::Relaxed) || target_active.load(Ordering::Relaxed);
 
             if has_unsaved {
                 let dialog = UnsavedChangesDialog::new().unwrap();
