@@ -7,6 +7,11 @@ on:
 permissions:
   contents: write
 
+# Keeps a single rolling draft release whose body is the auto-generated
+# changelog of everything since the last published release. The version is
+# intentionally left unset — at release time you open the draft, type the
+# version number, and click Publish. Publishing creates the tag and triggers
+# build-and-upload-release-artifacts.yml.
 jobs:
   draft:
     name: Update Draft Release
@@ -28,17 +33,10 @@ jobs:
             cargo install git-cliff --locked || true
           fi
 
-      - name: Get version from Cargo.toml
-        id: version
-        run: |
-          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Generate changelog since last tag
+      - name: Generate changelog since last release
         run: |
           git fetch --tags
-          git-cliff --unreleased --tag "v${{ steps.version.outputs.version }}" --output changelog.md || true
+          git-cliff --unreleased --output changelog.md || true
           if [ ! -s changelog.md ]; then
             git log --pretty=format:'* %s (%h)' "$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)"..HEAD > changelog.md || true
           fi
@@ -46,11 +44,11 @@ jobs:
             echo "No changes yet." > changelog.md
           fi
 
-      - name: Create or update draft release
+      - name: Create or update rolling draft
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
+          tag_name: next
+          name: Next release (draft)
           body_path: changelog.md
           draft: true
           prerelease: false
