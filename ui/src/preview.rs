@@ -6,7 +6,7 @@ use slint::Model;
 
 use crate::editor::editor_param_to_calc_fn;
 use crate::face_mesh;
-use crate::{App, EditorParam, MeshPoint, NameValuePair};
+use crate::{App, EditorParam, NameValuePair};
 
 /// Cached, reusable preview evaluation state. Rebuilt only when the editor
 /// params change; the live render loop then evaluates against it every frame
@@ -26,18 +26,9 @@ thread_local! {
         ranges: HashMap::new(),
     });
 
-    /// Persistent model backing the face point cloud. Rows are updated in place
-    /// each frame so Slint diffs them instead of recreating the repeater.
-    static MESH_MODEL: Rc<slint::VecModel<MeshPoint>> = Rc::new(slint::VecModel::default());
-
-    /// Persistent model backing the output-params panel, also updated in place
+    /// Persistent model backing the output-params panel, updated in place
     /// so the value meters can refresh at the render frame rate.
     static OUTPUT_MODEL: Rc<slint::VecModel<NameValuePair>> = Rc::new(slint::VecModel::default());
-}
-
-/// The persistent point-cloud model, to bind onto the UI once at startup.
-pub fn mesh_model() -> Rc<slint::VecModel<MeshPoint>> {
-    MESH_MODEL.with(|m| m.clone())
 }
 
 /// The persistent output-params model, to bind onto the UI once at startup.
@@ -111,47 +102,51 @@ pub fn collect_input_values(input_model: &slint::VecModel<NameValuePair>) -> Has
         .filter_map(|i| {
             input_model
                 .row_data(i)
-                .map(|p| (p.name.to_string(), f64::from(p.value)))
+                .map(|pair| (pair.name.to_string(), pair.value as f64))
         })
         .collect()
 }
 
-/// Evaluate the cached state into the full output list (with ranges) for the
-/// side panel. `advance` steps the delay buffers.
-pub fn eval_outputs(values: &HashMap<String, f64>, advance: bool) -> Vec<NameValuePair> {
+/// Evaluate current preview outputs given a set of input values.
+///
+/// If `advance_delays` is true, delay buffers advance one step (called from
+/// the live tracking loop); if false, they evaluate in read-only / peek mode
+/// (called from the editor preview when a slider moves).
+pub fn eval_outputs(
+    input_values: &HashMap<String, f64>,
+    advance_delays: bool,
+) -> Vec<NameValuePair> {
     PREVIEW_STATE.with(|cell| {
-        let st = &mut *cell.borrow_mut();
-        let results = snenk_bridge_service::eval::evaluate(&st.compiled, values);
-        let computed: HashMap<&str, f64> =
-            results.iter().map(|r| (r.name.as_str(), r.value)).collect();
-
-        let mut output: Vec<NameValuePair> = results
-            .iter()
-            .map(|r| {
-                let (min, max) = st
-                    .ranges
-                    .get(r.name.as_str())
-                    .copied()
-                    .unwrap_or((0.0, 1.0));
-                NameValuePair {
-                    name: r.name.clone().into(),
-                    value: r.value as f32,
-                    min,
-                    max,
-                }
-            })
+        let mut state = cell.borrow_mut();
+        let eval_results = snenk_bridge_service::eval::evaluate(&state.compiled, input_values);
+        let mut map: HashMap<String, f64> = eval_results
+            .into_iter()
+            .map(|r| (r.name, r.value))
             .collect();
 
-        for (name, ev) in st.delays.iter_mut() {
-            let rv = computed.get(ev.ref_param()).copied();
-            let v = match (advance, rv) {
-                (true, Some(r)) => ev.update(r),
-                _ => ev.current(),
+        // Evaluate delay buffers against the current values map (including
+        // the newly-computed expression results).
+        for (name, delay_state) in &mut state.delays {
+            let src_name = delay_state.ref_param();
+            let input_val = map
+                .get(src_name)
+                .copied()
+                .or_else(|| input_values.get(src_name).copied())
+                .unwrap_or(0.0);
+            let out_val = if advance_delays {
+                delay_state.update(input_val)
+            } else {
+                delay_state.current()
             };
-            let (min, max) = st.ranges.get(name.as_str()).copied().unwrap_or((0.0, 1.0));
+            map.insert(name.clone(), out_val);
+        }
+
+        let mut output = Vec::new();
+        for (name, &(min, max)) in &state.ranges {
+            let val = map.get(name).copied().unwrap_or(0.0) as f32;
             output.push(NameValuePair {
                 name: name.clone().into(),
-                value: v as f32,
+                value: val,
                 min,
                 max,
             });
@@ -160,52 +155,32 @@ pub fn eval_outputs(values: &HashMap<String, f64>, advance: bool) -> Vec<NameVal
     })
 }
 
-/// Map well-known VTS output parameter names onto the normalised face-mesh
-/// parameters. Head angles (degrees, ~-30..30) become rotation in radians.
-pub fn face_params(get: impl Fn(&str) -> Option<f32>) -> face_mesh::FaceParams {
-    let angle = |v: f32| (v / 30.0).clamp(-1.0, 1.0) * 0.6;
-    let unit = |v: f32| v.clamp(-1.0, 1.0);
-    face_mesh::FaceParams {
-        yaw: get("FaceAngleX").map_or(0.0, angle),
-        pitch: get("FaceAngleY").map_or(0.0, angle),
-        roll: get("FaceAngleZ").map_or(0.0, angle),
-        mouth_open: get("MouthOpen").unwrap_or(0.0).clamp(0.0, 1.0),
-        mouth_smile: get("MouthSmile").map_or(0.0, unit),
-        mouth_x: get("MouthX").map_or(0.0, unit),
-        tongue_out: get("TongueOut").unwrap_or(0.0).clamp(0.0, 1.0),
-        eye_open_l: get("EyeOpenLeft").unwrap_or(1.0).clamp(0.0, 1.0),
-        eye_open_r: get("EyeOpenRight").unwrap_or(1.0).clamp(0.0, 1.0),
-        brow_l: get("BrowLeftY").or_else(|| get("Brows")).map_or(0.0, unit),
-        brow_r: get("BrowRightY").or_else(|| get("Brows")).map_or(0.0, unit),
-    }
-}
-
-/// Project the mesh for the given params and update the persistent point model
-/// (rows in place) plus the wireframe path.
-pub fn update_mesh(ui: &App, params: &face_mesh::FaceParams) {
-    let mesh = face_mesh::compute(params);
-    MESH_MODEL.with(|model| {
-        if model.row_count() == mesh.points.len() {
-            for (i, &(x, y, depth)) in mesh.points.iter().enumerate() {
-                model.set_row_data(i, MeshPoint { x, y, depth });
-            }
-        } else {
-            while model.row_count() > 0 {
-                model.remove(model.row_count() - 1);
-            }
-            for &(x, y, depth) in &mesh.points {
-                model.push(MeshPoint { x, y, depth });
-            }
-        }
+/// Project and render the 3D GLB mesh for the given input values and update
+/// the rendered model image in the UI.
+pub fn update_input_mesh(ui: &App, input_values: &HashMap<String, f64>) {
+    let image = face_mesh::compute_input_preview(|target_name| {
+        input_values
+            .get(target_name)
+            .copied()
+            .map(|val| val as f32)
+            .or_else(|| {
+                input_values
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(target_name))
+                    .map(|(_, &val)| val as f32)
+            })
     });
-    ui.set_mesh_wireframe(mesh.wireframe.into());
+    ui.set_mesh_image(image);
 }
 
 /// Push an evaluated output list to the side panel (in place) and refresh the
-/// face mesh from the same values.
-pub fn update_outputs_and_mesh(ui: &App, output: &[NameValuePair]) {
-    let out_map: HashMap<&str, f32> = output.iter().map(|p| (p.name.as_str(), p.value)).collect();
-    update_mesh(ui, &face_params(|n| out_map.get(n).copied()));
+/// input shape face mesh from the input values.
+pub fn update_outputs_and_mesh(
+    ui: &App,
+    input_values: &HashMap<String, f64>,
+    output: &[NameValuePair],
+) {
+    update_input_mesh(ui, input_values);
     OUTPUT_MODEL.with(|model| update_value_model(model, output));
 }
 

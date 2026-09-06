@@ -35,6 +35,7 @@ mod face_mesh;
 mod logging;
 mod presets;
 mod preview;
+mod renderer;
 mod settings;
 mod util;
 
@@ -93,9 +94,7 @@ fn main() {
         Rc::new(slint::VecModel::from(Vec::<EditorParam>::new()));
     app.set_editor_params(editor_params_model.clone().into());
 
-    // Persistent face point-cloud + output-panel models, updated in place by
-    // the render loop.
-    app.set_mesh_points(mesh_model().into());
+    // Persistent output-panel model, updated in place by the render loop.
     app.set_output_params(output_model().into());
 
     // Name of the preset currently loaded in the editor. Tracked explicitly
@@ -1086,8 +1085,9 @@ fn main() {
                                     input_model.set_row_data(i, pair);
                                 }
                             }
-                            let output = eval_outputs(&collect_input_values(input_model), false);
-                            update_outputs_and_mesh(&ui, &output);
+                            let in_vals = collect_input_values(input_model);
+                            let output = eval_outputs(&in_vals, false);
+                            update_outputs_and_mesh(&ui, &in_vals, &output);
                         }
                         src_had.store(false, Ordering::Relaxed);
                     }
@@ -1222,7 +1222,7 @@ fn main() {
                 let values = live_values.lock().unwrap().clone();
                 update_input_model(&input_model, &values);
                 let output = eval_outputs(&collect_input_values(&input_model), true);
-                update_outputs_and_mesh(&ui, &output);
+                update_outputs_and_mesh(&ui, &values, &output);
             },
         );
     }

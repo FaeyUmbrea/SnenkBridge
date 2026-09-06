@@ -1,43 +1,17 @@
-// A wireframe point cloud of a synthetic face mesh. The Rust side rotates and
-// projects the mesh; here we just plot the points and stroke the wireframe.
-export struct MeshPoint {
-    x: float,     // 0..1 within the square area
-    y: float,
-    depth: float, // -1 (back) .. 1 (front), drives size + brightness
-}
-
 export component FacePreview inherits Rectangle {
-    in property<[MeshPoint]> points;
-    in property<string> wireframe;
+    in property<image> model-image;
 
-    property<length> area: min(self.width, self.height) * 0.92;
+    property<length> area: min(self.width, self.height) * 0.94;
     property<length> ox: (self.width - root.area) / 2;
     property<length> oy: (self.height - root.area) / 2;
 
-    // Wireframe edges (drawn under the points).
-    Path {
+    // 3D Shaded Solid Model Render
+    Image {
         x: root.ox;
         y: root.oy;
         width: root.area;
         height: root.area;
-        viewbox-x: 0;
-        viewbox-y: 0;
-        viewbox-width: 1.0;
-        viewbox-height: 1.0;
-        commands: root.wireframe;
-        stroke: #6a322e;
-        stroke-width: 1px;
-    }
-
-    // Points.
-    for p in root.points : Rectangle {
-        property<length> sz: 2px + (p.depth + 1) * 1.4px;
-        width: self.sz;
-        height: self.sz;
-        border-radius: self.sz / 2;
-        x: root.ox + p.x * root.area - self.sz / 2;
-        y: root.oy + p.y * root.area - self.sz / 2;
-        background: #e07f78;
-        opacity: 0.45 + (p.depth + 1) * 0.27;
+        source: root.model-image;
+        image-fit: contain;
     }
 }

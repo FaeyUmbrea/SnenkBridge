@@ -17,6 +17,11 @@ i-slint-backend-winit = "1.12"
 rfd = "0.17.2"
 dirs = "6"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+gltf = { version = "1.4", features = ["extras", "names"] }
+wgpu = "24"
+bytemuck = { version = "1.25", features = ["derive"] }
+pollster = "0.4"
+glam = "0.33.6"
 
 [build-dependencies]
 slint-build = "1.12"

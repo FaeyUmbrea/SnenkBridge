@@ -3,7 +3,6 @@ import { StyledInput, Btn, FieldLabel, UnitLabel, StatusBadge, Card, StyledCombo
 import { AboutWindow, ImportDialog, NewPresetDialog, UnsavedChangesDialog, ActiveConnectionDialog, VariablesWindow } from "components/dialogs.slint";
 import { ConnectionBar } from "components/connection-bar.slint";
 import { PreviewTab } from "components/preview-tab.slint";
-import { MeshPoint } from "components/face-preview.slint";
 import { EditorTab } from "components/editor-tab.slint";
 
 export { AboutWindow, ImportDialog, NewPresetDialog, UnsavedChangesDialog, ActiveConnectionDialog, VariablesWindow }
@@ -42,8 +41,7 @@ export component App inherits Window {
     in-out property<int> active-tab: 0;
     in property<[NameValuePair]> input-shapes: [];
     in property<[NameValuePair]> output-params: [];
-    in property<[MeshPoint]> mesh-points;
-    in property<string> mesh-wireframe;
+    in property<image> mesh-image;
     in property<bool> preview-paused: false;
 
     in-out property<string> editor-title;
@@ -201,8 +199,7 @@ export component App inherits Window {
             vertical-stretch: 1;
             input-shapes: root.input-shapes;
             output-params: root.output-params;
-            mesh-points: root.mesh-points;
-            wireframe: root.mesh-wireframe;
+            mesh-image: root.mesh-image;
             paused: root.preview-paused;
         }
 

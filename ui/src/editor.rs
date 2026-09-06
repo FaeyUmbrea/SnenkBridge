@@ -95,7 +95,7 @@ pub fn refresh_editor_preview(
     rebuild_preview_state(ui, model);
     let values = collect_input_values(input_model);
     let output = eval_outputs(&values, false);
-    update_outputs_and_mesh(ui, &output);
+    update_outputs_and_mesh(ui, &values, &output);
 }
 
 /// Build a SnekPreset from the current editor state in the UI.

@@ -1,205 +1,251 @@
-//! A small synthetic 3D face mesh for the preview point cloud.
+//! A 3D face mesh asset and deformation pipeline powered by `gltf` and `glam`.
 //!
-//! There is no real landmark data available, so we build a stylised face out of
-//! rings (outline, eyes, brows, nose, mouth), deform it with the live output
-//! parameters, rotate it by the head angles, and project it to 2D. The result
-//! is a set of screen-space points plus a wireframe path (line segments), both
-//! handed to Slint for rendering.
+//! Loads the 3D ARKit face mesh model via the standard `gltf` crate and applies
+//! live blendshape morph targets (jaw drop, smiles, eye blinks, brows, mouth shapes)
+//! and quaternion-based head rotation (yaw, pitch, roll) before passing view-space
+//! geometry to the GPU renderer.
 
-use std::fmt::Write as _;
+use std::sync::OnceLock;
 
-/// Normalised face parameters driving the mesh. Angles are in radians; the
-/// openness/smile/brow values are unit-ish (0..1 or -1..1).
-#[derive(Default, Clone, Copy)]
-pub struct FaceParams {
-    pub yaw: f32,
-    pub pitch: f32,
-    pub roll: f32,
-    pub mouth_open: f32,
-    pub mouth_smile: f32,
-    pub mouth_x: f32,
-    pub tongue_out: f32,
-    pub eye_open_l: f32,
-    pub eye_open_r: f32,
-    pub brow_l: f32,
-    pub brow_r: f32,
+use glam::{Quat, Vec3};
+use slint::Image;
+
+use crate::renderer::{render_view_space_vertices, RENDER_HEIGHT, RENDER_WIDTH};
+
+const GLB_BYTES: &[u8] = include_bytes!("../resources/ARKitBlendshapeFaceMesh.glb");
+
+/// A sparse blendshape morph target containing vertex delta offsets.
+#[derive(Clone, Debug)]
+pub struct MorphTarget {
+    pub name: String,
+    pub sparse_indices: Vec<u16>,
+    pub sparse_deltas: Vec<[f32; 3]>,
 }
 
-/// Projected mesh ready for rendering: points are `(x, y, depth)` with x/y in
-/// 0..1 (screen space within a square) and depth in -1..1 (back..front).
-pub struct ProjectedMesh {
-    pub points: Vec<(f32, f32, f32)>,
-    pub wireframe: String,
+/// In-memory parsed GLB face mesh asset with base geometry and morph targets.
+pub struct GlbMesh {
+    pub base_positions: Vec<[f32; 3]>,
+    pub triangles: Vec<[u16; 3]>,
+    pub targets: Vec<MorphTarget>,
+    pub center: [f32; 3],
 }
 
-struct Mesh {
-    points: Vec<[f32; 3]>,
-    edges: Vec<(usize, usize)>,
+static GLB_MESH: OnceLock<GlbMesh> = OnceLock::new();
+
+/// Retrieve the cached, static [`GlbMesh`] instance parsed on first access.
+pub fn get_glb_mesh() -> &'static GlbMesh {
+    GLB_MESH.get_or_init(|| GlbMesh::parse(GLB_BYTES))
 }
 
-impl Mesh {
-    fn new() -> Self {
+impl GlbMesh {
+    /// Parse a binary GLTF (.glb) buffer into vertex positions, triangle indices,
+    /// and sparse morph target deltas using the standard `gltf` crate and `glam` quaternions.
+    pub fn parse(bytes: &[u8]) -> Self {
+        let (doc, buffers, _) = gltf::import_slice(bytes).expect("Failed to import GLB buffer");
+        let mesh = doc.meshes().next().expect("Mesh missing from GLB asset");
+
+        // Extract root node orientation quaternion from GLTF scene node if present.
+        let node_rotation = doc
+            .scenes()
+            .find_map(|scene| {
+                scene.nodes().find_map(|node| {
+                    if node.mesh().is_some() {
+                        let (_, rotation, _) = node.transform().decomposed();
+                        Some(Quat::from_array(rotation))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or(Quat::IDENTITY);
+
+        // Parse blendshape target names from mesh extras if present
+        let target_names: Vec<String> = mesh
+            .extras()
+            .as_ref()
+            .and_then(|extras| serde_json::from_str::<serde_json::Value>(extras.get()).ok())
+            .and_then(|val| val.get("targetNames").cloned())
+            .and_then(|val| serde_json::from_value::<Vec<String>>(val).ok())
+            .unwrap_or_default();
+
+        let primitive = mesh
+            .primitives()
+            .next()
+            .expect("Primitive missing from GLB asset");
+        let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+        // Parse base vertex positions, applying the node orientation quaternion.
+        let base_positions: Vec<[f32; 3]> = reader
+            .read_positions()
+            .expect("Base positions missing from GLB asset")
+            .map(|pos| node_rotation.mul_vec3(Vec3::from_array(pos)).to_array())
+            .collect();
+
+        // Parse triangle indices.
+        let raw_indices: Vec<u32> = reader
+            .read_indices()
+            .expect("Indices missing from GLB asset")
+            .into_u32()
+            .collect();
+
+        let mut triangles = Vec::with_capacity(raw_indices.len() / 3);
+        for chunk in raw_indices.chunks_exact(3) {
+            triangles.push([chunk[0] as u16, chunk[1] as u16, chunk[2] as u16]);
+        }
+
+        // Parse morph target deltas transformed consistently by node quaternion.
+        let mut targets = Vec::new();
+        for (target_idx, (pos_iter, _, _)) in reader.read_morph_targets().enumerate() {
+            let name = target_names
+                .get(target_idx)
+                .cloned()
+                .unwrap_or_else(|| format!("target_{target_idx}"));
+
+            let mut sparse_indices = Vec::new();
+            let mut sparse_deltas = Vec::new();
+
+            if let Some(pos_iter) = pos_iter {
+                for (v_idx, delta) in pos_iter.enumerate() {
+                    let rotated_delta = node_rotation.mul_vec3(Vec3::from_array(delta)).to_array();
+                    let delta_vec = Vec3::from_array(delta);
+                    if delta_vec.length_squared() > 1e-10 {
+                        sparse_indices.push(v_idx as u16);
+                        sparse_deltas.push(rotated_delta);
+                    }
+                }
+            }
+
+            targets.push(MorphTarget {
+                name,
+                sparse_indices,
+                sparse_deltas,
+            });
+        }
+
+        // Compute bounding center for head rotation pivot alignment.
+        let center = if base_positions.is_empty() {
+            [0.0, 0.0, 0.0]
+        } else {
+            let sum = base_positions
+                .iter()
+                .fold(Vec3::ZERO, |acc, p| acc + Vec3::from_array(*p));
+            (sum / (base_positions.len() as f32)).to_array()
+        };
+
         Self {
-            points: Vec::new(),
-            edges: Vec::new(),
-        }
-    }
-
-    /// Add a ring (or arc) of points and chain them with edges. `sweep` is the
-    /// angle range in radians; `closed` connects the last point back to the
-    /// first.
-    fn ring(&mut self, center: [f32; 3], radii: [f32; 2], sweep: [f32; 2], n: usize, closed: bool) {
-        let [cx, cy, cz] = center;
-        let [rx, ry] = radii;
-        let [t0, t1] = sweep;
-        let start = self.points.len();
-        for i in 0..n {
-            let t = t0 + (t1 - t0) * (i as f32) / ((n - 1).max(1) as f32);
-            self.points.push([cx + rx * t.cos(), cy + ry * t.sin(), cz]);
-        }
-        for i in 0..n - 1 {
-            self.edges.push((start + i, start + i + 1));
-        }
-        if closed {
-            self.edges.push((start + n - 1, start));
+            base_positions,
+            triangles,
+            targets,
+            center,
         }
     }
 }
 
-const TAU: f32 = std::f32::consts::TAU;
+/// Project and render the 3D GLB mesh using live tracking values (blendshapes + head rotation).
+pub fn compute_input_preview(get_tracking_value: impl Fn(&str) -> Option<f32>) -> Image {
+    let mesh = get_glb_mesh();
 
-fn base_mesh(p: &FaceParams) -> Mesh {
-    let mut m = Mesh::new();
+    // 1. Initialize deformed vertices from base positions.
+    let mut vertices = mesh.base_positions.clone();
 
-    // Face outline — pushed back in z so rotation reads as a head.
-    m.ring([0.0, 0.0, -0.18], [0.62, 0.82], [0.0, TAU], 28, true);
+    // 2. Accumulate active morph target deltas (blendshapes).
+    for target in &mesh.targets {
+        let weight = get_tracking_value(&target.name)
+            .or_else(|| get_tracking_value(&target.name.to_lowercase()))
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0);
 
-    // Eyes. Vertical radius collapses as the eye closes.
-    let eye_ry = |open: f32| 0.03 + open.clamp(0.0, 1.0) * 0.08;
-    m.ring(
-        [-0.28, -0.14, 0.10],
-        [0.16, eye_ry(p.eye_open_l)],
-        [0.0, TAU],
-        12,
-        true,
-    );
-    m.ring(
-        [0.28, -0.14, 0.10],
-        [0.16, eye_ry(p.eye_open_r)],
-        [0.0, TAU],
-        12,
-        true,
-    );
-
-    // Brows — top arcs that rise with the brow value.
-    let mut brow = |x: f32, raise: f32| {
-        m.ring(
-            [x, -0.34 - raise.clamp(-1.0, 1.0) * 0.07, 0.16],
-            [0.18, 0.10],
-            [TAU * 0.55, TAU * 0.95],
-            6,
-            false,
-        );
-    };
-    brow(-0.28, p.brow_l);
-    brow(0.28, p.brow_r);
-
-    // Nose — bridge to tip, tip pushed forward in z.
-    let nose_start = m.points.len();
-    m.points.push([0.0, -0.10, 0.22]);
-    m.points.push([0.0, 0.02, 0.34]);
-    m.points.push([0.0, 0.14, 0.46]);
-    m.points.push([-0.08, 0.20, 0.30]);
-    m.points.push([0.08, 0.20, 0.30]);
-    m.edges.push((nose_start, nose_start + 1));
-    m.edges.push((nose_start + 1, nose_start + 2));
-    m.edges.push((nose_start + 2, nose_start + 3));
-    m.edges.push((nose_start + 2, nose_start + 4));
-
-    // Mouth — ring that opens vertically; corners lift with smile.
-    let mouth_start = m.points.len();
-    let mrx = 0.22 + p.mouth_smile.clamp(0.0, 1.0) * 0.04;
-    let mry = 0.04 + p.mouth_open.clamp(0.0, 1.0) * 0.14;
-    let n = 14;
-    for i in 0..n {
-        let t = TAU * (i as f32) / (n as f32);
-        let x = mrx * t.cos();
-        // Lift corners (|cos| near 1) with smile.
-        let corner = t.cos().abs();
-        let y = 0.42 + mry * t.sin() - p.mouth_smile.clamp(-1.0, 1.0) * 0.06 * corner;
-        m.points.push([x + p.mouth_x * 0.08, y, 0.20]);
-    }
-    for i in 0..n {
-        m.edges.push((mouth_start + i, mouth_start + (i + 1) % n));
+        if weight > 0.0001 {
+            for (&vertex_idx, &delta) in target
+                .sparse_indices
+                .iter()
+                .zip(target.sparse_deltas.iter())
+            {
+                let vertex = &mut vertices[vertex_idx as usize];
+                let deformed = Vec3::from_array(*vertex) + Vec3::from_array(delta) * weight;
+                *vertex = deformed.to_array();
+            }
+        }
     }
 
-    // Tongue — a small triangle below the mouth that extends with TongueOut.
-    // Always present (constant topology); near-flat and hidden when retracted.
-    let t = p.tongue_out.clamp(0.0, 1.0);
-    let mx = p.mouth_x * 0.08;
-    let half_w = 0.03 + t * 0.05;
-    let base_y = 0.42 + mry;
-    let tip_y = base_y + 0.02 + t * 0.20;
-    let tz = 0.22 + t * 0.08;
-    let tongue_start = m.points.len();
-    m.points.push([mx - half_w, base_y, tz]);
-    m.points.push([mx + half_w, base_y, tz]);
-    m.points.push([mx, tip_y, tz]);
-    m.edges.push((tongue_start, tongue_start + 1));
-    m.edges.push((tongue_start + 1, tongue_start + 2));
-    m.edges.push((tongue_start + 2, tongue_start));
+    // 3. Compute head rotation angles (yaw, pitch, roll) from tracking inputs.
+    let normalize_rotation_angle = |degrees: f32| (degrees / 30.0).clamp(-1.0, 1.0) * 0.95;
+    let yaw = get_tracking_value("FaceAngleY")
+        .or_else(|| get_tracking_value("HeadRotY"))
+        .or_else(|| get_tracking_value("headYaw"))
+        .map_or(0.0, normalize_rotation_angle);
+    let pitch = get_tracking_value("FaceAngleX")
+        .or_else(|| get_tracking_value("HeadRotX"))
+        .or_else(|| get_tracking_value("headPitch"))
+        .map_or(0.0, normalize_rotation_angle);
+    let roll = get_tracking_value("FaceAngleZ")
+        .or_else(|| get_tracking_value("HeadRotZ"))
+        .or_else(|| get_tracking_value("headRoll"))
+        .map_or(0.0, normalize_rotation_angle);
 
-    m
+    let head_rotation =
+        Quat::from_rotation_x(pitch) * Quat::from_rotation_y(yaw) * Quat::from_rotation_z(roll);
+
+    let center_vec = Vec3::from_array(mesh.center);
+
+    // 4. Transform vertices into view space using quaternions.
+    let mut view_space_vertices: Vec<[f32; 3]> = Vec::with_capacity(vertices.len());
+
+    for &vertex in &vertices {
+        let centered = Vec3::from_array(vertex) - center_vec;
+        let rotated = head_rotation.mul_vec3(centered);
+        view_space_vertices.push(rotated.to_array());
+    }
+
+    // 5. Render 3D model with wgpu offscreen GPU renderer.
+    render_view_space_vertices(&view_space_vertices)
 }
 
-/// Rotate, project, and screen-map the mesh.
-#[must_use]
-pub fn compute(p: &FaceParams) -> ProjectedMesh {
-    let mesh = base_mesh(p);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let (sr, cr) = p.roll.sin_cos();
-    let (sy, cy) = p.yaw.sin_cos();
-    let (sp, cp) = p.pitch.sin_cos();
-
-    let project = |v: &[f32; 3]| -> (f32, f32, f32) {
-        let [mut x, mut y, mut z] = *v;
-        // Roll (about Z)
-        let (rx, ry) = (x * cr - y * sr, x * sr + y * cr);
-        x = rx;
-        y = ry;
-        // Yaw (about Y)
-        let (yx, yz) = (x * cy + z * sy, -x * sy + z * cy);
-        x = yx;
-        z = yz;
-        // Pitch (about X)
-        let (py, pz) = (y * cp - z * sp, y * sp + z * cp);
-        y = py;
-        z = pz;
-        // Weak perspective: nearer points spread out slightly.
-        let scale = 1.0 / (1.0 - z * 0.22);
-        (x * scale, y * scale, z)
-    };
-
-    let projected: Vec<(f32, f32, f32)> = mesh.points.iter().map(project).collect();
-
-    // Screen-map to 0..1 within a centred square.
-    const FIT: f32 = 0.46;
-    let to_screen = |(x, y): (f32, f32)| (0.5 + x * FIT, 0.5 + y * FIT);
-
-    let points: Vec<(f32, f32, f32)> = projected
-        .iter()
-        .map(|&(x, y, z)| {
-            let (sx, sy) = to_screen((x, y));
-            (sx, sy, (z * 1.6).clamp(-1.0, 1.0))
-        })
-        .collect();
-
-    let mut wireframe = String::with_capacity(mesh.edges.len() * 24);
-    for &(a, b) in &mesh.edges {
-        let (ax, ay) = to_screen((projected[a].0, projected[a].1));
-        let (bx, by) = to_screen((projected[b].0, projected[b].1));
-        let _ = write!(wireframe, "M {ax:.4} {ay:.4} L {bx:.4} {by:.4} ");
+    #[test]
+    fn glb_mesh_loads_and_parses_with_gltf_crate() {
+        let mesh = get_glb_mesh();
+        assert_eq!(mesh.base_positions.len(), 6912);
+        assert_eq!(mesh.triangles.len(), 2304);
+        assert_eq!(mesh.targets.len(), 51);
+        assert!(mesh.center[1].abs() < 0.1);
     }
 
-    ProjectedMesh { points, wireframe }
+    #[test]
+    fn quaternion_rotation_matches_euler_transforms() {
+        let pitch = 0.2_f32;
+        let yaw = 0.3_f32;
+        let roll = 0.1_f32;
+
+        let head_rotation =
+            Quat::from_rotation_x(pitch) * Quat::from_rotation_y(yaw) * Quat::from_rotation_z(roll);
+
+        let test_pt = Vec3::new(0.05, 0.08, -0.02);
+        let result = head_rotation.mul_vec3(test_pt);
+
+        let qx = Quat::from_rotation_x(pitch);
+        let qy = Quat::from_rotation_y(yaw);
+        let qz = Quat::from_rotation_z(roll);
+
+        let expected = qx.mul_vec3(qy.mul_vec3(qz.mul_vec3(test_pt)));
+
+        assert!((result.x - expected.x).abs() < 1e-6);
+        assert!((result.y - expected.y).abs() < 1e-6);
+        assert!((result.z - expected.z).abs() < 1e-6);
+    }
+
+    #[test]
+    fn compute_input_preview_renders_valid_image() {
+        let image = compute_input_preview(|name| match name {
+            "jawOpen" => Some(0.8),
+            "FaceAngleY" => Some(15.0),
+            _ => None,
+        });
+
+        assert_eq!(image.size().width, RENDER_WIDTH);
+        assert_eq!(image.size().height, RENDER_HEIGHT);
+    }
 }
