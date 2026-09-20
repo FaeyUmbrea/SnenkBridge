@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use glam::{Quat, Vec3};
 use slint::Image;
 
-use crate::renderer::{render_view_space_vertices, RENDER_HEIGHT, RENDER_WIDTH};
+use crate::renderer::render_view_space_vertices;
 
 const GLB_BYTES: &[u8] = include_bytes!("../resources/ARKitBlendshapeFaceMesh.glb");
 
@@ -204,6 +204,7 @@ pub fn compute_input_preview(get_tracking_value: impl Fn(&str) -> Option<f32>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::renderer::{RENDER_HEIGHT, RENDER_WIDTH};
 
     #[test]
     fn glb_mesh_loads_and_parses_with_gltf_crate() {

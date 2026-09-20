@@ -3,9 +3,6 @@ use std::process::Command;
 fn main() {
     slint_build::compile("src/app.slint").unwrap();
 
-    #[cfg(windows)]
-    embed_resource::compile("embed_resources.rc");
-
     generate_blendshapes();
     generate_credits();
 }
@@ -32,7 +29,7 @@ fn generate_credits() {
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let dest = std::path::Path::new(&out_dir).join("credits.rs");
 
-    // --no-deps gives us only workspace crates with their direct dependencies listed
+    // --no-deps gives us only the application with their direct dependencies listed
     let output = Command::new("cargo")
         .args(["metadata", "--format-version=1", "--no-deps"])
         .output();

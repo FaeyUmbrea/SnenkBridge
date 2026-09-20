@@ -95,6 +95,10 @@ No black box sitting between your face and your model.
 
 ---
 
+## Current development build
+
+The desktop application includes phone tracking, expression evaluation, VTube Studio output, preset editing and import, offline preview, live face preview, and persistent connection settings. The CLI has been removed.
+
 ## Getting started
 
 ### Graphical interface
@@ -109,26 +113,6 @@ No black box sitting between your face and your model.
 That's enough to get a preset running.
 
 The editor is there when you want to go deeper, not something you have to understand before using the application.
-
-### CLI
-
-SnenkBridge also provides a command-line interface for headless setups and automation:
-
-```bash
-snenk_bridge -c preset.json -p 192.168.1.100 -t vts
-```
-
-| Option                        | Example            | Description                                   |
-| ----------------------------- | ------------------ | --------------------------------------------- |
-| `-c`, `--config`              | `-c preset.json`   | Configuration file                            |
-| `-p`, `--phone-ip`            | `-p 192.168.0.174` | iPhone IP address                             |
-| `-t`, `--tracking-client`     | `-t ifm`           | Tracking protocol                             |
-| `-f`, `--face_search_timeout` | `-f 3000`          | Face detection search timeout in milliseconds |
-| `-d`, `--config-reload-delay` | `-d 10000`         | Configuration reload interval in milliseconds |
-| `-h`, `--help`                | `-h`               | Show help                                     |
-| `-V`, `--version`             | `-V`               | Show version                                  |
-
----
 
 ## Configuration
 
@@ -183,11 +167,7 @@ cd SnenkBridge
 cargo build --release
 ```
 
-To build the CLI explicitly:
-
-```bash
-cargo build --release --package snenk_bridge
-```
+Run the desktop application with `cargo run`.
 
 ---
 
@@ -203,7 +183,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
 SnenkBridge is made and maintained by **[Faey Umbrea](https://github.com/FaeyUmbrea)** as part of **Void Monster**.
 
-It originally started as a fork of [SandoitchiBridge](https://github.com/an1by/SandoitchiBridge) by an1by, and has since grown into its own project.
+Inspired by RustyBridge and [SandoitchiBridge](https://github.com/an1by/SandoitchiBridge).
 
 I make software because sometimes the existing options annoy me enough that it's easier to build the thing myself.
 

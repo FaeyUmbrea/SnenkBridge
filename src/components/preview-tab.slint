@@ -240,48 +240,11 @@ export component PreviewTab inherits Rectangle {
                         opacity: root.paused ? 0.25 : 1.0;
                     }
 
-                    if root.preview-mode == 1 : Rectangle {
-                        background: Theme.bg-panel;
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 12px;
-
-                            Rectangle {
-                                width: 110px;
-                                height: 24px;
-                                border-radius: 12px;
-                                background: #32251a;
-                                border-width: 1px;
-                                border-color: #61462a;
-                                x: (parent.width - self.width) / 2;
-                                Text {
-                                    text: "COMING SOON";
-                                    color: #e8a855;
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    letter-spacing: 0.8px;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
-                            }
-
-                            Text {
-                                text: "Output Shape Preview";
-                                color: Theme.text;
-                                font-size: 18px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                            }
-
-                            Text {
-                                text: "Live 3D preview of transformed output parameters on a target model will be available in a future update.";
-                                color: Theme.text-dim;
-                                font-size: 12px;
-                                horizontal-alignment: center;
-                                max-width: 360px;
-                                wrap: word-wrap;
-                            }
-                        }
+                    if root.preview-mode == 1 : ValuePanel {
+                        width: parent.width;
+                        height: parent.height;
+                        title: "CALCULATED OUTPUT — SAME VALUES SENT TO VTUBE STUDIO";
+                        items: root.output-params;
                     }
 
                     // Paused overlay — shown when the preview is suspended because the

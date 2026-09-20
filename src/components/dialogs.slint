@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { AboutSlint, Palette } from "std-widgets.slint";
 import { StyledInput, Btn, FieldLabel, StyledCombo, VarEntry } from "common.slint";
 
 export component VariablesWindow inherits Window {
@@ -105,9 +106,9 @@ export component AboutWindow inherits Window {
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
     min-width: 400px;
-    min-height: 350px;
+    min-height: 530px;
     preferred-width: 400px;
-    preferred-height: 400px;
+    preferred-height: 580px;
     background: Theme.bg-window;
 
     in property<string> credits-text;
@@ -127,6 +128,19 @@ export component AboutWindow inherits Window {
             text: "github.com/FaeyUmbrea/SnenkBridge";
             color: #b8706a;
             font-size: 12px;
+        }
+
+        Text {
+            text: "Inspired by RustyBridge and SandoitchiBridge.";
+            color: Theme.text-muted;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            height: 110px;
+            background: Palette.background;
+            AboutSlint { }
         }
 
         Rectangle { height: 1px; background: Theme.border; }
