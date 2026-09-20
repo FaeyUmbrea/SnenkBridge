@@ -123,12 +123,10 @@ impl Api {
         } else {
             addr.ip().to_string()
         };
-        let config = WebSocketConfig {
-            max_message_size: Some(1024 * 1024),
-            max_frame_size: Some(1024 * 1024),
-            max_write_buffer_size: 2 * 1024 * 1024,
-            ..Default::default()
-        };
+        let mut config = WebSocketConfig::default();
+        config.max_message_size = Some(1024 * 1024);
+        config.max_frame_size = Some(1024 * 1024);
+        config.max_write_buffer_size = 2 * 1024 * 1024;
         let mut handshake = tungstenite::client::client_with_config(
             format!("ws://{host}:{port}/"),
             stream,
@@ -166,7 +164,12 @@ impl Api {
     ) -> Result<Value, Failure> {
         self.sequence += 1;
         let id = format!("snenk-{}", self.sequence);
-        self.socket.send(Message::Text(json!({"apiName":"VTubeStudioPublicAPI","apiVersion":"1.0","requestID":id,"messageType":kind,"data":data}).to_string())).map_err(|e|e.to_string())?;
+        self.socket
+            .send(Message::text(
+                json!({"apiName":"VTubeStudioPublicAPI","apiVersion":"1.0","requestID":id,"messageType":kind,"data":data})
+                    .to_string(),
+            ))
+            .map_err(|e| e.to_string())?;
         let deadline = Instant::now() + timeout;
         while !cancelled(stop) && Instant::now() < deadline {
             match self.socket.read() {
@@ -538,7 +541,7 @@ mod tests {
             .as_str()
             .unwrap()
             .replace("Request", "Response");
-        ws.send(Message::Text(
+        ws.send(Message::text(
             json!({"messageType":kind,"requestID":req["requestID"],"data":data}).to_string(),
         ))
         .unwrap();

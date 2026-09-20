@@ -1,5 +1,8 @@
 use crate::model::{DelaySettings, Parameter};
-use evalexpr::{build_operator_tree, ContextWithMutableVariables, HashMapContext, Node, Value};
+use evalexpr::{
+    build_operator_tree, ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Node,
+    Value,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 const LIMIT: f64 = 1_000_000.0;
@@ -114,7 +117,9 @@ pub fn validation_errors(params: &[Parameter]) -> Vec<String> {
             if p.delay_buffer.is_none() {
                 if p.func.trim().is_empty() {
                     errors.push("expression is empty".into());
-                } else if let Err(e) = build_operator_tree(&eval_expression(&p.func)) {
+                } else if let Err(e) =
+                    build_operator_tree::<DefaultNumericTypes>(&eval_expression(&p.func))
+                {
                     errors.push(e.to_string());
                 }
             }
@@ -130,7 +135,7 @@ pub fn validation_errors(params: &[Parameter]) -> Vec<String> {
 pub fn time_variables(params: &[Parameter], elapsed_ms: u64) -> BTreeMap<String, f64> {
     let mut result = BTreeMap::new();
     for p in params {
-        if let Ok(node) = build_operator_tree(&eval_expression(&p.func)) {
+        if let Ok(node) = build_operator_tree::<DefaultNumericTypes>(&eval_expression(&p.func)) {
             for name in node.iter_variable_identifiers() {
                 let period = name
                     .strip_prefix("Wave")
