@@ -32,7 +32,7 @@ fn generate_credits() {
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let dest = std::path::Path::new(&out_dir).join("credits.rs");
 
-    // --no-deps gives us only workspace crates with their direct dependencies listed
+    // --no-deps gives us only the application with their direct dependencies listed
     let output = Command::new("cargo")
         .args(["metadata", "--format-version=1", "--no-deps"])
         .output();

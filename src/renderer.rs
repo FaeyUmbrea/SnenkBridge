@@ -125,9 +125,9 @@ impl WgpuRenderer {
         }))
         .ok()?;
 
-        let (device, queue) = pollster::block_on(
-            adapter.request_device(
-                &wgpu::DeviceDescriptor {
+        let (device, queue) =
+            pollster::block_on(
+                adapter.request_device(&wgpu::DeviceDescriptor {
                     label: Some("snenk_wgpu_device"),
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::downlevel_webgl2_defaults()
@@ -135,10 +135,9 @@ impl WgpuRenderer {
                     memory_hints: wgpu::MemoryHints::default(),
                     experimental_features: wgpu::ExperimentalFeatures::disabled(),
                     trace: wgpu::Trace::Off,
-                },
-            ),
-        )
-        .ok()?;
+                }),
+            )
+            .ok()?;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("snenk_face_shader"),

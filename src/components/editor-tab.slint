@@ -67,7 +67,7 @@ component ParamRow inherits Rectangle {
         };
     }
 
-    property<bool> has-error: !root.is-delay && root.error-text != "";
+    property<bool> has-error: root.error-text != "";
 
     background: Math.mod(root.row-index, 2) == 0 ? Theme.bg-panel : #1b1b1d;
     border-radius: 4px;

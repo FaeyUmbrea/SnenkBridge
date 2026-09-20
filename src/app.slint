@@ -68,6 +68,10 @@ export component App inherits Window {
     callback settings-changed();
     callback show-about();
     callback new-preset();
+    callback manual-input(string, string);
+    callback advance-preview();
+    in-out property<string> manual-name: "JawOpen";
+    in-out property<string> manual-value: "0";
 
     VerticalLayout {
         padding: 0px;
@@ -195,6 +199,16 @@ export component App inherits Window {
             }
         }
 
+        HorizontalLayout {
+            padding: 8px; spacing: 8px; height: 44px;
+            Text { text: root.source-active ? "Live preview" : "Offline preview"; color: Theme.text-dim; vertical-alignment: center; }
+            StyledInput { text <=> root.manual-name; width: 180px; enabled: !root.source-active; }
+            StyledInput { text <=> root.manual-value; width: 80px; enabled: !root.source-active; }
+            Btn { label: "Set input"; enabled: !root.source-active; clicked => { root.manual-input(root.manual-name, root.manual-value); } }
+            Btn { label: "Advance one update"; enabled: !root.source-active; clicked => { root.advance-preview(); } }
+            Text { text: "Manual edits do not advance delays"; color: Theme.text-muted; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+        }
         // Tab content (stretch)
         if root.active-tab == 0 : PreviewTab {
             vertical-stretch: 1;

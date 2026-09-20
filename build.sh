@@ -24,8 +24,8 @@ case "$OS" in
         cp "$SCRIPT_DIR/target/release/snenk_bridge_ui" "$MACOS_DIR/snenk_bridge_ui"
 
         ICON_ENTRY=""
-        if [ -f "$SCRIPT_DIR/ui/resources/SnenkBridgeIcon.icns" ]; then
-            cp "$SCRIPT_DIR/ui/resources/SnenkBridgeIcon.icns" "$RESOURCES/SnenkBridgeIcon.icns"
+        if [ -f "$SCRIPT_DIR/resources/SnenkBridgeIcon.icns" ]; then
+            cp "$SCRIPT_DIR/resources/SnenkBridgeIcon.icns" "$RESOURCES/SnenkBridgeIcon.icns"
             ICON_ENTRY="<key>CFBundleIconFile</key>
     <string>SnenkBridgeIcon</string>"
         fi

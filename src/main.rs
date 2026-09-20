@@ -1,201 +1,22 @@
-use std::{
-    path::PathBuf,
-    sync::{
-        atomic::AtomicBool,
-        mpsc::{self, Receiver, Sender},
-        Arc,
-    },
-    thread,
-};
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-use clap::{Parser, Subcommand};
-use snenk_bridge_service::{
-    tracking::{
-        client::{TrackingClient, TrackingClientType},
-        ifacialmocap::IFacialMocapTrackingClinet,
-        response::TrackingResponse,
-        vtubestudio::VTubeStudioTrackingClient,
-    },
-    vitamins,
-    vts::plugin::VTubeStudioPlugin,
-};
+#[cfg(test)]
+mod core_tests;
+mod evaluation;
+mod face_mesh;
+mod logging;
+mod model;
+mod network;
+mod presets;
+mod renderer;
+mod settings;
+mod ui;
 
-fn parse_tracking_client_type(input: &str) -> Result<TrackingClientType, String> {
-    match input.to_lowercase().as_str() {
-        "vts" | "vtubestudio" => Ok(TrackingClientType::VTubeStudio),
-        "ifm" | "ifacialmocap" => Ok(TrackingClientType::IFacialMocap),
-        _ => Err(format!("Invalid tracking client type: {input}")),
-    }
-}
+slint::include_modules!();
+include!(concat!(env!("OUT_DIR"), "/credits.rs"));
+include!(concat!(env!("OUT_DIR"), "/blendshapes.rs"));
 
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
-
-    // Legacy flat args for the `bridge` mode (backwards compat)
-    #[arg(short, long, help = "Path to JSON config with transformations")]
-    config: Option<String>,
-    #[arg(short, long, help = "Phone IP address")]
-    phone_ip: Option<String>,
-    #[arg(
-        short,
-        long,
-        value_parser = parse_tracking_client_type,
-        help = "Tracking application type"
-    )]
-    tracking_client: Option<TrackingClientType>,
-    #[arg(
-        short,
-        long,
-        default_value_t = 3000,
-        hide_default_value = true,
-        help = "The time in milliseconds to wait before changing FaceFound to 0. Default: 3000"
-    )]
-    face_search_timeout: u64,
-    #[arg(long, default_value = "localhost", help = "VTube Studio IP address")]
-    vts_ip: String,
-    #[arg(long, default_value = "8001", help = "VTube Studio API port")]
-    vts_port: String,
-}
-
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Convert a Vitamins .vps preset file to `SnenkBridge` JSON format
-    Convert {
-        /// Path to the input .vps file
-        input: PathBuf,
-        /// Output path (defaults to input filename with .json extension)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-}
-
-fn main() {
-    let cli = Cli::parse();
-
-    match cli.command {
-        Some(Commands::Convert { input, output }) => {
-            run_convert(&input, output);
-        }
-        None => {
-            run_bridge(cli);
-        }
-    }
-}
-
-fn run_convert(input: &std::path::Path, output: Option<PathBuf>) {
-    let output = output.unwrap_or_else(|| input.with_extension("snek"));
-
-    let content = match std::fs::read_to_string(input) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error reading {}: {e}", input.display());
-            std::process::exit(1);
-        }
-    };
-
-    let preset = match vitamins::convert_vitamins_to_preset(&content, true) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Error converting {}: {e}", input.display());
-            std::process::exit(1);
-        }
-    };
-
-    let json = match serde_json::to_string_pretty(&preset) {
-        Ok(j) => j,
-        Err(e) => {
-            eprintln!("Error serializing: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    match std::fs::write(&output, &json) {
-        Ok(()) => println!("Converted {} -> {}", input.display(), output.display()),
-        Err(e) => {
-            eprintln!("Error writing {}: {e}", output.display());
-            std::process::exit(1);
-        }
-    }
-}
-
-fn run_bridge(cli: Cli) {
-    let config_path = cli.config.unwrap_or_else(|| {
-        eprintln!("Error: --config is required for bridge mode");
-        std::process::exit(1);
-    });
-    let config = std::fs::read_to_string(&config_path).unwrap_or_else(|e| {
-        eprintln!("Error reading config {config_path}: {e}");
-        std::process::exit(1);
-    });
-    let phone_ip = cli.phone_ip.unwrap_or_else(|| {
-        eprintln!("Error: --phone-ip is required for bridge mode");
-        std::process::exit(1);
-    });
-    let tracking_client = cli.tracking_client.unwrap_or_else(|| {
-        eprintln!("Error: --tracking-client is required for bridge mode");
-        std::process::exit(1);
-    });
-
-    println!("Github: https://github.com/FaeyUmbrea/SnenkBridge");
-
-    let active_flag = Arc::new(AtomicBool::new(true));
-    let active_flag_clone = Arc::clone(&active_flag);
-
-    let log_pattern = "[{d(%Y-%m-%d %H:%M:%S)} {h({l}):<5.5} {f}:{L}] {m}{n}";
-
-    let stdout = log4rs::append::console::ConsoleAppender::builder()
-        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
-            log_pattern,
-        )))
-        .build();
-
-    let roll = log4rs::append::rolling_file::RollingFileAppender::builder()
-        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(log_pattern)))
-        .build(
-            "log/log.log",
-            Box::new(log4rs::append::rolling_file::policy::compound::CompoundPolicy::new(
-                Box::new(log4rs::append::rolling_file::policy::compound::trigger::size::SizeTrigger::new(1024 * 1024)),
-                Box::new(log4rs::append::rolling_file::policy::compound::roll::delete::DeleteRoller::new()),
-            )),
-        )
-        .expect("Failed to create rolling file appender");
-
-    let log_config = log4rs::Config::builder()
-        .appender(log4rs::config::Appender::builder().build("stdout", Box::new(stdout)))
-        .appender(log4rs::config::Appender::builder().build("roll", Box::new(roll)))
-        .build(
-            log4rs::config::Root::builder()
-                .appender("stdout")
-                .appender("roll")
-                .build(log::LevelFilter::Info),
-        )
-        .expect("Failed to build log config");
-
-    log4rs::init_config(log_config).expect("Failed to initialize logging");
-
-    let (sender, receiver): (Sender<TrackingResponse>, Receiver<TrackingResponse>) =
-        mpsc::channel();
-
-    let pctr_handler = thread::spawn(move || {
-        VTubeStudioPlugin::new(
-            receiver,
-            config,
-            cli.face_search_timeout,
-            cli.vts_ip,
-            cli.vts_port,
-        )
-        .run(active_flag);
-    });
-
-    let function: fn(String, Sender<TrackingResponse>, Arc<AtomicBool>) = match tracking_client {
-        TrackingClientType::VTubeStudio => VTubeStudioTrackingClient::run,
-        TrackingClientType::IFacialMocap => IFacialMocapTrackingClinet::run,
-    };
-    let phonetr_handler = thread::spawn(move || function(phone_ip, sender, active_flag_clone));
-
-    let _ = pctr_handler.join();
-    let _ = phonetr_handler.join();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    logging::init_logging();
+    ui::run()
 }
