@@ -129,7 +129,7 @@ Or you can build your own transformations using mappings, expressions, curves, s
 Documentation:
 
 * [Configuration Guide](docs/configuration.md)
-* [Example Configuration](test.json)
+* [Example Configuration](examples/test.json)
 * [Preset Format Reference](docs/formats/snek-v1.md)
 
 ---

@@ -40,22 +40,22 @@ pub enum NetworkStatus {
     Connected,
     Error(String),
 }
-const POLL: Duration = Duration::from_millis(50);
-const MAX_FRAME: usize = 65536;
-type Status = Arc<Mutex<NetworkStatus>>;
-fn set_status(status: &Status, value: NetworkStatus) {
+pub(crate) const POLL: Duration = Duration::from_millis(50);
+pub(crate) const MAX_FRAME: usize = 65536;
+pub(crate) type Status = Arc<Mutex<NetworkStatus>>;
+pub(crate) fn set_status(status: &Status, value: NetworkStatus) {
     *status.lock().unwrap_or_else(|e| e.into_inner()) = value;
 }
-fn cancelled(stop: &AtomicBool) -> bool {
+pub(crate) fn cancelled(stop: &AtomicBool) -> bool {
     stop.load(Ordering::Acquire)
 }
-fn pause(stop: &AtomicBool, duration: Duration) {
+pub(crate) fn pause(stop: &AtomicBool, duration: Duration) {
     let until = Instant::now() + duration;
     while !cancelled(stop) && Instant::now() < until {
         thread::sleep(POLL.min(until.saturating_duration_since(Instant::now())));
     }
 }
-fn transient(e: &std::io::Error) -> bool {
+pub(crate) fn transient(e: &std::io::Error) -> bool {
     matches!(
         e.kind(),
         std::io::ErrorKind::WouldBlock
@@ -63,7 +63,7 @@ fn transient(e: &std::io::Error) -> bool {
             | std::io::ErrorKind::Interrupted
     )
 }
-fn resolve(host: &str, port: u16, stop: &AtomicBool) -> Result<SocketAddr, String> {
+pub(crate) fn resolve(host: &str, port: u16, stop: &AtomicBool) -> Result<SocketAddr, String> {
     if let Ok(ip) = host.parse::<IpAddr>() {
         return Ok(SocketAddr::new(ip, port));
     }

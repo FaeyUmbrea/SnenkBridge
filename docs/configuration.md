@@ -93,7 +93,7 @@ Wave and PingPong activate when a face is first detected.
 
 ## Example Config
 
-See [`test.json`](../test.json) for a full working configuration.
+See [`examples/test.json`](../examples/test.json) for a full working configuration.
 
 Here's a minimal example with a few common parameters:
 
