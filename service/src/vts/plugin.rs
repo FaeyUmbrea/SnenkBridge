@@ -684,7 +684,7 @@ impl VTubeStudioPlugin {
         for func in calc_fns.into_iter() {
             let name: String = func.name.clone();
 
-            info!("Loading parameter: {}", &name);
+            info!("Loading parameter: {}", name);
             if !def_params.contains(&name) {
                 let param_data = requests::ParameterCreation {
                     parameter_name: name.clone(),

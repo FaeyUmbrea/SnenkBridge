@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="ui/resources/SnenkBridgeIcon.svg" alt="SnenkBridge Logo" width="128" height="128" />
+</p>
+
 # SnenkBridge
 
 **An open-source, cross-platform face tracking bridge for VTubers.**

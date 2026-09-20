@@ -34,7 +34,7 @@ component ValuePanel inherits Rectangle {
             flick := Flickable {
                 width: parent.width;
                 height: parent.height;
-                viewport-height: rows-layout.preferred-height;
+                content-height: rows-layout.preferred-height;
 
                 rows-layout := VerticalLayout {
                     spacing: 2px;
@@ -98,7 +98,7 @@ component ValuePanel inherits Rectangle {
             }
 
             // Thin overlay scrollbar — only shown when the list overflows.
-            if flick.viewport-height > flick.height : Rectangle {
+            if flick.content-height > flick.height : Rectangle {
                 x: parent.width - 5px;
                 width: 4px;
                 background: Theme.bg-input;
@@ -109,9 +109,9 @@ component ValuePanel inherits Rectangle {
                     width: parent.width;
                     border-radius: 2px;
                     background: Theme.border-strong;
-                    height: max(28px, parent.height * (flick.height / flick.viewport-height));
+                    height: max(28px, parent.height * (flick.height / flick.content-height));
                     y: (parent.height - self.height)
-                        * ((-flick.viewport-y) / (flick.viewport-height - flick.height));
+                        * ((-flick.content-y) / (flick.content-height - flick.height));
                 }
             }
         }

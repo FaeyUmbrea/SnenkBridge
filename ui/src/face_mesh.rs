@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use glam::{Quat, Vec3};
 use slint::Image;
 
-use crate::renderer::{render_view_space_vertices, RENDER_HEIGHT, RENDER_WIDTH};
+use crate::renderer::render_view_space_vertices;
 
 const GLB_BYTES: &[u8] = include_bytes!("../resources/ARKitBlendshapeFaceMesh.glb");
 
@@ -89,7 +89,8 @@ impl GlbMesh {
             .collect();
 
         let mut triangles = Vec::with_capacity(raw_indices.len() / 3);
-        for chunk in raw_indices.chunks_exact(3) {
+        let (chunks, _remainder) = raw_indices.as_chunks::<3>();
+        for chunk in chunks {
             triangles.push([chunk[0] as u16, chunk[1] as u16, chunk[2] as u16]);
         }
 
@@ -204,6 +205,7 @@ pub fn compute_input_preview(get_tracking_value: impl Fn(&str) -> Option<f32>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::renderer::{RENDER_HEIGHT, RENDER_WIDTH};
 
     #[test]
     fn glb_mesh_loads_and_parses_with_gltf_crate() {

@@ -342,7 +342,7 @@ export component EditorTab inherits Rectangle {
             ed-flick := Flickable {
                 width: parent.width;
                 height: parent.height;
-                viewport-height: params-layout.preferred-height;
+                content-height: params-layout.preferred-height;
 
                 params-layout := VerticalLayout {
                     spacing: 2px;
@@ -373,7 +373,7 @@ export component EditorTab inherits Rectangle {
                 }
             }
 
-            if ed-flick.viewport-height > ed-flick.height : Rectangle {
+            if ed-flick.content-height > ed-flick.height : Rectangle {
                 x: parent.width - 5px;
                 width: 4px;
                 background: Theme.bg-input;
@@ -384,9 +384,9 @@ export component EditorTab inherits Rectangle {
                     width: parent.width;
                     border-radius: 2px;
                     background: Theme.border-strong;
-                    height: max(28px, parent.height * (ed-flick.height / ed-flick.viewport-height));
+                    height: max(28px, parent.height * (ed-flick.height / ed-flick.content-height));
                     y: (parent.height - self.height)
-                        * ((-ed-flick.viewport-y) / (ed-flick.viewport-height - ed-flick.height));
+                        * ((-ed-flick.content-y) / (ed-flick.content-height - ed-flick.height));
                 }
             }
         }

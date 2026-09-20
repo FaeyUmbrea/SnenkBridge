@@ -3,7 +3,6 @@
 // `log/log.log`, so no logging is lost when the console is hidden.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use i_slint_backend_winit::WinitWindowAccessor;
 use slint::Model;
 use snenk_bridge_service::{
     preset::{self, SnekPreset},
@@ -1054,13 +1053,10 @@ fn main() {
                 let ok = slint::invoke_from_event_loop(move || {
                     let Some(ui) = weak.upgrade() else { return };
 
-                    // Pause the live preview while the window is unfocused to
+                    // Pause the live preview while the window is hidden/minimized to
                     // save resources; the overlay tells the user it's intentional.
-                    let focused = ui
-                        .window()
-                        .with_winit_window(|w| w.has_focus())
-                        .unwrap_or(true);
-                    ui.set_preview_paused(src_on && !focused);
+                    let paused = src_on && !ui.window().is_visible();
+                    ui.set_preview_paused(paused);
 
                     if src_on {
                         // Panels + point cloud are driven by the dedicated render
@@ -1207,14 +1203,10 @@ fn main() {
             Duration::from_millis(33),
             move || {
                 let Some(ui) = weak.upgrade() else { return };
-                if ui.get_active_tab() != 0 || !source_active.load(Ordering::Relaxed) {
-                    return;
-                }
-                let focused = ui
-                    .window()
-                    .with_winit_window(|w| w.has_focus())
-                    .unwrap_or(true);
-                if !focused {
+                if ui.get_active_tab() != 0
+                    || !source_active.load(Ordering::Relaxed)
+                    || !ui.window().is_visible()
+                {
                     return;
                 }
                 // Refresh input panel, output panel (value meters) and the point

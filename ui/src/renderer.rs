@@ -116,12 +116,14 @@ pub struct WgpuRenderer {
 impl WgpuRenderer {
     /// Initialize headless wgpu device, pipeline, and offscreen render buffers.
     pub fn new(mesh: &GlbMesh) -> Option<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::default();
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::LowPower,
             force_fallback_adapter: false,
             compatible_surface: None,
-        }))?;
+            apply_limit_buckets: false,
+        }))
+        .ok()?;
 
         let (device, queue) = pollster::block_on(
             adapter.request_device(
@@ -131,8 +133,9 @@ impl WgpuRenderer {
                     required_limits: wgpu::Limits::downlevel_webgl2_defaults()
                         .using_resolution(wgpu::Limits::default()),
                     memory_hints: wgpu::MemoryHints::default(),
+                    experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                    trace: wgpu::Trace::Off,
                 },
-                None,
             ),
         )
         .ok()?;
@@ -180,8 +183,8 @@ impl WgpuRenderer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -191,7 +194,7 @@ impl WgpuRenderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[wgpu::VertexBufferLayout {
+                buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
@@ -206,7 +209,7 @@ impl WgpuRenderer {
                             shader_location: 1,
                         },
                     ],
-                }],
+                })],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -229,13 +232,13 @@ impl WgpuRenderer {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -373,6 +376,7 @@ impl WgpuRenderer {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &color_view,
                     resolve_target: None,
+                    depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
@@ -388,6 +392,7 @@ impl WgpuRenderer {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             render_pass.set_pipeline(&self.pipeline);
@@ -427,10 +432,10 @@ impl WgpuRenderer {
             let _ = sender.send(res);
         });
 
-        self.device.poll(wgpu::Maintain::wait());
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
         receiver.recv().ok()?.ok()?;
 
-        let mapped_data = buffer_slice.get_mapped_range();
+        let mapped_data = buffer_slice.get_mapped_range().ok()?;
         let mut pixel_buf = SharedPixelBuffer::<Rgba8Pixel>::new(RENDER_WIDTH, RENDER_HEIGHT);
         pixel_buf
             .make_mut_slice()

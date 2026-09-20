@@ -1,8 +1,10 @@
 import { Theme } from "theme.slint";
 import { StyledInput, Btn, FieldLabel, StyledCombo, VarEntry } from "common.slint";
+import { AboutSlint } from "std-widgets.slint";
 
 export component VariablesWindow inherits Window {
     title: "Expression Variables";
+    icon: @image-url("../../resources/SnenkBridgeIcon.svg");
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
     min-width: 400px;
@@ -39,7 +41,7 @@ export component VariablesWindow inherits Window {
             vw-flick := Flickable {
                 width: parent.width;
                 height: parent.height;
-                viewport-height: list.preferred-height;
+                content-height: list.preferred-height;
 
                 list := VerticalLayout {
                     spacing: 2px;
@@ -80,7 +82,7 @@ export component VariablesWindow inherits Window {
                 }
             }
 
-            if vw-flick.viewport-height > vw-flick.height : Rectangle {
+            if vw-flick.content-height > vw-flick.height : Rectangle {
                 x: parent.width - 5px;
                 width: 4px;
                 background: Theme.bg-input;
@@ -91,9 +93,9 @@ export component VariablesWindow inherits Window {
                     width: parent.width;
                     border-radius: 2px;
                     background: Theme.border-strong;
-                    height: max(28px, parent.height * (vw-flick.height / vw-flick.viewport-height));
+                    height: max(28px, parent.height * (vw-flick.height / vw-flick.content-height));
                     y: (parent.height - self.height)
-                        * ((-vw-flick.viewport-y) / (vw-flick.viewport-height - vw-flick.height));
+                        * ((-vw-flick.content-y) / (vw-flick.content-height - vw-flick.height));
                 }
             }
         }
@@ -102,73 +104,146 @@ export component VariablesWindow inherits Window {
 
 export component AboutWindow inherits Window {
     title: "About SnenkBridge";
+    icon: @image-url("../../resources/SnenkBridgeIcon.svg");
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
-    min-width: 400px;
-    min-height: 350px;
-    preferred-width: 400px;
-    preferred-height: 400px;
+    min-width: 440px;
+    min-height: 480px;
+    preferred-width: 460px;
+    preferred-height: 520px;
     background: Theme.bg-window;
 
     in property<string> credits-text;
 
     VerticalLayout {
-        padding: 16px;
+        padding: 18px;
         spacing: 12px;
 
-        Text {
-            text: "SnenkBridge";
-            color: Theme.text;
-            font-size: 18px;
-            font-weight: 700;
-        }
+        // Header with app icon and project info
+        HorizontalLayout {
+            spacing: 14px;
+            alignment: start;
 
-        Text {
-            text: "github.com/FaeyUmbrea/SnenkBridge";
-            color: #b8706a;
-            font-size: 12px;
-        }
+            Image {
+                source: @image-url("../../resources/SnenkBridgeIcon.svg");
+                width: 44px;
+                height: 44px;
+            }
 
-        Rectangle { height: 1px; background: Theme.border; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
 
-        Text {
-            text: "Presets";
-            color: Theme.text-dim;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        Text {
-            text: "Maruseu VBridger and Maruseu Enhanced presets based on presets by Maruseu (github.com/maruseu/VitaminsPresets), included with permission. These presets are not covered by the project's GPL license.";
-            color: Theme.text-muted;
-            font-size: 11px;
-            wrap: word-wrap;
-        }
+                Text {
+                    text: "SnenkBridge";
+                    color: Theme.text;
+                    font-size: 18px;
+                    font-weight: 700;
+                }
 
-        Rectangle { height: 1px; background: Theme.border; }
-
-        Text {
-            text: "Dependencies";
-            color: Theme.text-dim;
-            font-size: 12px;
-            font-weight: 700;
-        }
-
-        Flickable {
-            vertical-stretch: 1;
-            viewport-height: deps-text.preferred-height;
-            deps-text := Text {
-                text: root.credits-text;
-                color: #555570;
-                font-size: 10px;
-                wrap: word-wrap;
-                width: parent.width;
+                Text {
+                    text: "github.com/FaeyUmbrea/SnenkBridge";
+                    color: Theme.highlight;
+                    font-size: 11px;
+                }
             }
         }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        // Presets notice card
+        Rectangle {
+            background: Theme.bg-panel;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 4px;
+
+                Text {
+                    text: "Presets";
+                    color: Theme.text;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                Text {
+                    text: "Maruseu VBridger and Maruseu Enhanced presets based on presets by Maruseu (github.com/maruseu/VitaminsPresets), included with permission. These presets are not covered by the project's GPL license.";
+                    color: Theme.text-muted;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        // Dependencies section with framed scroll box
+        VerticalLayout {
+            spacing: 6px;
+            vertical-stretch: 1;
+
+            Text {
+                text: "Dependencies";
+                color: Theme.text-dim;
+                font-size: 11px;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+                background: Theme.bg-panel;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.border;
+                clip: true;
+
+                deps-flick := Flickable {
+                    x: 10px;
+                    y: 8px;
+                    width: parent.width - 20px;
+                    height: parent.height - 16px;
+                    content-height: deps-text.preferred-height;
+
+                    deps-text := Text {
+                        text: root.credits-text;
+                        color: Theme.text-dim;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                        width: parent.width;
+                    }
+                }
+
+                if deps-flick.content-height > deps-flick.height : Rectangle {
+                    x: parent.width - 6px;
+                    y: 4px;
+                    width: 4px;
+                    height: parent.height - 8px;
+                    background: Theme.bg-input;
+                    border-radius: 2px;
+
+                    Rectangle {
+                        x: 0;
+                        width: parent.width;
+                        border-radius: 2px;
+                        background: Theme.border-strong;
+                        height: max(20px, parent.height * (deps-flick.height / deps-flick.content-height));
+                        y: (parent.height - self.height)
+                            * ((-deps-flick.content-y) / (deps-flick.content-height - deps-flick.height));
+                    }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        AboutSlint {}
     }
 }
 
 export component ImportDialog inherits Window {
     title: "Import Preset";
+    icon: @image-url("../../resources/SnenkBridgeIcon.svg");
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
     min-width: 380px;
@@ -281,6 +356,7 @@ export component ImportDialog inherits Window {
 
 export component NewPresetDialog inherits Window {
     title: "New Preset";
+    icon: @image-url("../../resources/SnenkBridgeIcon.svg");
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
     min-width: 380px;
@@ -379,6 +455,7 @@ export component NewPresetDialog inherits Window {
 
 export component UnsavedChangesDialog inherits Window {
     title: "Unsaved Changes";
+    icon: @image-url("../../resources/SnenkBridgeIcon.svg");
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
     min-width: 340px;
@@ -442,6 +519,7 @@ export component UnsavedChangesDialog inherits Window {
 
 export component ActiveConnectionDialog inherits Window {
     title: "Active Connection";
+    icon: @image-url("../../resources/SnenkBridgeIcon.svg");
     default-font-family: "Inter, SF Pro, Segoe UI, sans-serif";
     default-font-size: 13px;
     min-width: 340px;

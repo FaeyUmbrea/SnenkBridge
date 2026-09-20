@@ -31,3 +31,4 @@ $RECYCLE.BIN/
 
 # macOS
 .DS_Store
+/.output.txt
