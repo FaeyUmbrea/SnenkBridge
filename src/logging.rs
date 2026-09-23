@@ -25,7 +25,7 @@ pub fn init_logging() {
     // A writable location regardless of the launch CWD:
     // `~/Library/Application Support/SnenkBridge/log` on macOS, the platform
     // config dir elsewhere; falls back to `./log`.
-    let log_dir = dirs::config_dir()
+    let log_dir = crate::directories::config_dir()
         .map(|d| d.join("SnenkBridge").join("log"))
         .unwrap_or_else(|| Path::new("log").to_path_buf());
     let _ = std::fs::create_dir_all(&log_dir);

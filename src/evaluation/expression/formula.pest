@@ -1,0 +1,35 @@
+// The saved formula language. Precedence is specified in the Pratt table.
+WHITESPACE = _{ WHITE_SPACE }
+formula = { SOI ~ expression ~ EOI }
+expression = { prefix* ~ primary ~ (infix ~ prefix* ~ primary)* }
+prefix = _{ negate | not }
+infix = _{ assignment | or | and | equal | unequal | less_equal | greater_equal | less | greater | add | subtract | multiply | divide | modulo | power | comma | semicolon }
+primary = { (group | string | call | literal)+ | empty }
+group = { "(" ~ expression ~ ")" }
+call = { literal ~ (group | string | call | literal) }
+// Scientific notation with a signed exponent must remain a single token.
+literal = @{ scientific | raw }
+scientific = { (ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? | "." ~ ASCII_DIGIT+) ~ ("e" | "E") ~ ("+" | "-") ~ ASCII_DIGIT+ ~ !raw_char }
+raw = { raw_char+ }
+raw_char = { !(WHITE_SPACE | "+" | "-" | "*" | "/" | "%" | "^" | "(" | ")" | "," | ";" | "=" | "!" | "<" | ">" | "&" | "|" | "\"") ~ ANY }
+string = @{ "\"" ~ ("\\" ~ ("\\" | "\"") | !("\"" | "\\") ~ ANY)* ~ "\"" }
+empty = { "" }
+assignment = @{ "&&=" | "||=" | "+=" | "-=" | "*=" | "/=" | "%=" | "^=" | "=" ~ !"=" }
+or = @{ "||" ~ !"=" }
+and = @{ "&&" ~ !"=" }
+equal = @{ "==" }
+unequal = @{ "!=" }
+less_equal = @{ "<=" }
+greater_equal = @{ ">=" }
+less = @{ "<" ~ !"=" }
+greater = @{ ">" ~ !"=" }
+add = @{ "+" ~ !"=" }
+subtract = @{ "-" ~ !"=" }
+multiply = @{ "*" ~ !"=" }
+divide = @{ "/" ~ !"=" }
+modulo = @{ "%" ~ !"=" }
+power = @{ "^" ~ !"=" }
+negate = @{ "-" ~ !"=" }
+not = @{ "!" ~ !"=" }
+comma = @{ "," }
+semicolon = @{ ";" }

@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod core_tests;
+mod directories;
 mod evaluation;
 mod face_mesh;
 mod logging;

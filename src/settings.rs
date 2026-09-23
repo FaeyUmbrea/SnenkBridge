@@ -48,7 +48,7 @@ impl Default for Settings {
 }
 
 pub fn app_dir() -> PathBuf {
-    let dir = dirs::config_dir()
+    let dir = crate::directories::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("SnenkBridge");
     let _ = std::fs::create_dir_all(&dir);

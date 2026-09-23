@@ -1,9 +1,10 @@
 use crate::model::{DelaySettings, Parameter};
-use evalexpr::{
-    build_operator_tree, ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Node,
-    Value,
-};
 use std::collections::{BTreeMap, BTreeSet};
+
+mod expression;
+use expression::Expression;
+#[cfg(test)]
+mod tests;
 
 const LIMIT: f64 = 1_000_000.0;
 const MAX_HISTORY: usize = 1_000_000;
@@ -13,6 +14,10 @@ fn eval_expression(expression: &str) -> String {
         result = result.replace(&format!("math::{name}"), name);
     }
     result
+}
+
+fn parse_expression(expression: &str) -> Result<Expression, String> {
+    Expression::parse(&eval_expression(expression))
 }
 struct Delay {
     settings: DelaySettings,
@@ -36,7 +41,7 @@ impl Delay {
 }
 struct Entry {
     parameter: Parameter,
-    expression: Option<Node>,
+    expression: Option<Expression>,
     delay: Option<Delay>,
 }
 pub struct Evaluator {
@@ -117,9 +122,7 @@ pub fn validation_errors(params: &[Parameter]) -> Vec<String> {
             if p.delay_buffer.is_none() {
                 if p.func.trim().is_empty() {
                     errors.push("expression is empty".into());
-                } else if let Err(e) =
-                    build_operator_tree::<DefaultNumericTypes>(&eval_expression(&p.func))
-                {
+                } else if let Err(e) = parse_expression(&p.func) {
                     errors.push(e.to_string());
                 }
             }
@@ -135,8 +138,8 @@ pub fn validation_errors(params: &[Parameter]) -> Vec<String> {
 pub fn time_variables(params: &[Parameter], elapsed_ms: u64) -> BTreeMap<String, f64> {
     let mut result = BTreeMap::new();
     for p in params {
-        if let Ok(node) = build_operator_tree::<DefaultNumericTypes>(&eval_expression(&p.func)) {
-            for name in node.iter_variable_identifiers() {
+        if let Ok(node) = parse_expression(&p.func) {
+            for name in node.variables() {
                 let period = name
                     .strip_prefix("Wave")
                     .or_else(|| name.strip_prefix("PingPong"))
@@ -172,7 +175,7 @@ impl Evaluator {
                 expression: if p.func.trim().is_empty() {
                     None
                 } else {
-                    build_operator_tree(&eval_expression(&p.func)).ok()
+                    parse_expression(&p.func).ok()
                 },
                 delay: p.delay_buffer.clone().map(|settings| Delay {
                     history: vec![0.0; settings.delay_count.max(1)],
@@ -189,12 +192,6 @@ impl Evaluator {
         values: &BTreeMap<String, f64>,
         advance: bool,
     ) -> BTreeMap<String, f64> {
-        let mut context = HashMapContext::new();
-        for (k, v) in values {
-            if v.is_finite() {
-                let _ = context.set_value(k.clone(), Value::Float(*v));
-            }
-        }
         let mut output = BTreeMap::new();
         for &i in &self.order {
             let entry = &mut self.entries[i];
@@ -212,8 +209,7 @@ impl Evaluator {
                     delay.current
                 }
             } else if let Some(node) = &entry.expression {
-                node.eval_number_with_context(&context)
-                    .unwrap_or(p.default_value)
+                node.evaluate(values).unwrap_or(p.default_value)
             } else {
                 continue;
             };

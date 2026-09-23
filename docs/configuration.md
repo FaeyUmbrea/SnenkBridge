@@ -2,7 +2,7 @@
 
 Snenk Bridge uses a JSON config file to define how tracking data gets transformed before being sent to VTubeStudio. Each entry maps a VTubeStudio parameter to a math expression built from tracking inputs.
 
-For the full list of available math and logic operations, see the [evalexpr documentation](https://docs.rs/evalexpr/latest/evalexpr/).
+For expression syntax, functions, and examples, see the [formula reference](formulas.md).
 
 ## Config Format
 
