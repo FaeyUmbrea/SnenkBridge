@@ -15,7 +15,7 @@ So I built one.
 [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-FaeyUmbrea-ea4aaa?style=flat\&logo=github-sponsors)](https://github.com/sponsors/FaeyUmbrea)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat)](#getting-started)
 [![VTube Studio](https://img.shields.io/badge/VTube%20Studio-Compatible-orange?style=flat\&logo=steam)](https://store.steampowered.com/app/1325860/VTube_Studio/)
-[![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-green?style=flat)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0-green?style=flat)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-dea584?style=flat\&logo=rust)](https://www.rust-lang.org/)
 
 ---

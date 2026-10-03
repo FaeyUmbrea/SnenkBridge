@@ -101,6 +101,11 @@ impl GlbMesh {
                 .get(target_idx)
                 .cloned()
                 .unwrap_or_else(|| format!("target_{target_idx}"));
+            // GLB names use lower camel case; tracking inputs use PascalCase.
+            let name = crate::BLENDSHAPE_NAMES
+                .iter()
+                .find(|input| input.eq_ignore_ascii_case(&name))
+                .map_or(name.clone(), |input| (*input).to_owned());
 
             let mut sparse_indices = Vec::new();
             let mut sparse_deltas = Vec::new();
@@ -144,6 +149,10 @@ impl GlbMesh {
 
 /// Project and render the 3D GLB mesh using live tracking values (blendshapes + head rotation).
 pub fn compute_input_preview(get_tracking_value: impl Fn(&str) -> Option<f32>) -> Image {
+    render_view_space_vertices(&input_preview_vertices(get_tracking_value))
+}
+
+fn input_preview_vertices(get_tracking_value: impl Fn(&str) -> Option<f32>) -> Vec<[f32; 3]> {
     let mesh = get_glb_mesh();
 
     // 1. Initialize deformed vertices from base positions.
@@ -151,7 +160,10 @@ pub fn compute_input_preview(get_tracking_value: impl Fn(&str) -> Option<f32>) -
 
     // 2. Accumulate active morph target deltas (blendshapes).
     for target in &mesh.targets {
+        let mut camel_name = target.name.clone();
+        camel_name[..1].make_ascii_lowercase();
         let weight = get_tracking_value(&target.name)
+            .or_else(|| get_tracking_value(&camel_name))
             .or_else(|| get_tracking_value(&target.name.to_lowercase()))
             .unwrap_or(0.0)
             .clamp(0.0, 1.0);
@@ -171,12 +183,13 @@ pub fn compute_input_preview(get_tracking_value: impl Fn(&str) -> Option<f32>) -
 
     // 3. Compute head rotation angles (yaw, pitch, roll) from tracking inputs.
     let normalize_rotation_angle = |degrees: f32| (degrees / 30.0).clamp(-1.0, 1.0) * 0.95;
-    let yaw = get_tracking_value("FaceAngleY")
-        .or_else(|| get_tracking_value("HeadRotY"))
+    // Preview X is horizontal looking, Y is vertical looking, and Z is tilt.
+    let yaw = get_tracking_value("FaceAngleX")
+        .or_else(|| get_tracking_value("HeadRotX"))
         .or_else(|| get_tracking_value("headYaw"))
         .map_or(0.0, normalize_rotation_angle);
-    let pitch = get_tracking_value("FaceAngleX")
-        .or_else(|| get_tracking_value("HeadRotX"))
+    let pitch = get_tracking_value("FaceAngleY")
+        .or_else(|| get_tracking_value("HeadRotY"))
         .or_else(|| get_tracking_value("headPitch"))
         .map_or(0.0, normalize_rotation_angle);
     let roll = get_tracking_value("FaceAngleZ")
@@ -198,8 +211,7 @@ pub fn compute_input_preview(get_tracking_value: impl Fn(&str) -> Option<f32>) -
         view_space_vertices.push(rotated.to_array());
     }
 
-    // 5. Render 3D model with wgpu offscreen GPU renderer.
-    render_view_space_vertices(&view_space_vertices)
+    view_space_vertices
 }
 
 #[cfg(test)]
@@ -214,6 +226,42 @@ mod tests {
         assert_eq!(mesh.triangles.len(), 2304);
         assert_eq!(mesh.targets.len(), 51);
         assert!(mesh.center[1].abs() < 0.1);
+    }
+
+    #[test]
+    fn every_mesh_blendshape_responds_to_canonical_tracking_input() {
+        let neutral = input_preview_vertices(|_| None);
+        for target in &get_glb_mesh().targets {
+            assert!(crate::BLENDSHAPE_NAMES.contains(&target.name.as_str()));
+            let posed = input_preview_vertices(|name| (name == target.name).then_some(1.0));
+            assert!(
+                neutral.iter().zip(&posed).any(|(a, b)| {
+                    Vec3::from_array(*a).distance_squared(Vec3::from_array(*b)) > 1e-10
+                }),
+                "{} did not deform the preview",
+                target.name
+            );
+        }
+    }
+
+    #[test]
+    fn preview_head_axes_match_horizontal_vertical_and_tilt_controls() {
+        let neutral = input_preview_vertices(|_| None);
+        for (input, fixed_axis) in [
+            ("HeadRotX", 1),
+            ("FaceAngleX", 1),
+            ("HeadRotY", 0),
+            ("FaceAngleY", 0),
+            ("HeadRotZ", 2),
+        ] {
+            let posed = input_preview_vertices(|name| (name == input).then_some(15.0));
+            for (a, b) in neutral.iter().zip(&posed) {
+                assert!((a[fixed_axis] - b[fixed_axis]).abs() < 1e-6, "{input}");
+            }
+            assert!(neutral.iter().zip(&posed).any(|(a, b)| {
+                Vec3::from_array(*a).distance_squared(Vec3::from_array(*b)) > 1e-6
+            }));
+        }
     }
 
     #[test]
