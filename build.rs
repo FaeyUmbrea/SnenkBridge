@@ -4,7 +4,9 @@ fn main() {
     slint_build::compile("src/app.slint").unwrap();
 
     #[cfg(windows)]
-    embed_resource::compile("resources/embed_resources.rc");
+    embed_resource::compile("resources/embed_resources.rc", embed_resource::NONE)
+        .manifest_required()
+        .unwrap();
 
     generate_blendshapes();
     generate_credits();
