@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 cargo build -r -p snenk_bridge_ui
+APP_VERSION="$(cargo pkgid -p snenk_bridge_ui)"
+APP_VERSION="${APP_VERSION##*@}"
 
 mkdir -p "$SCRIPT_DIR/target/bundle"
 
@@ -43,9 +45,9 @@ case "$OS" in
     <key>CFBundleIdentifier</key>
     <string>com.faeyumbrea.snenkbridge</string>
     <key>CFBundleVersion</key>
-    <string>0.3.0</string>
+    <string>${APP_VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.0</string>
+    <string>${APP_VERSION}</string>
     <key>CFBundleExecutable</key>
     <string>snenk_bridge_ui</string>
     <key>CFBundlePackageType</key>
