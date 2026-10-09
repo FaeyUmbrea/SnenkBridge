@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
+npm ci
+npm run build
 cargo build -r -p snenk_bridge_ui
 APP_VERSION="$(cargo pkgid -p snenk_bridge_ui)"
 APP_VERSION="${APP_VERSION##*@}"

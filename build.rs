@@ -1,12 +1,7 @@
 use std::process::Command;
 
 fn main() {
-    slint_build::compile("src/app.slint").unwrap();
-
-    #[cfg(windows)]
-    embed_resource::compile("resources/embed_resources.rc", embed_resource::NONE)
-        .manifest_required()
-        .unwrap();
+    tauri_build::build();
 
     generate_blendshapes();
     generate_credits();

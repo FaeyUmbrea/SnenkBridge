@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SnenkBridge",
+  "version": "1.2.1",
+  "identifier": "monster.void.snenkbridge",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "SnenkBridge",
+        "width": 1320,
+        "height": 820,
+        "minWidth": 1040,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "resources/SnenkBridgeIcon.png",
+      "resources/SnenkBridgeIcon.ico",
+      "resources/SnenkBridgeIcon.icns"
+    ]
+  }
+}

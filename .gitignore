@@ -32,3 +32,8 @@ $RECYCLE.BIN/
 # macOS
 .DS_Store
 /.output.txt
+
+# Frontend
+node_modules/
+/dist
+/gen

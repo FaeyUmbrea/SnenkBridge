@@ -3,7 +3,12 @@ setlocal
 
 cd /d "%~dp0.."
 
+call npm ci
+if errorlevel 1 exit /b 1
+call npm run build
+if errorlevel 1 exit /b 1
 cargo build -r -p snenk_bridge_ui
+if errorlevel 1 exit /b 1
 
 mkdir "%~dp0..\target\bundle\" 2>nul
 

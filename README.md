@@ -162,16 +162,19 @@ The included presets are intended to work without touching the editor. The expre
 
 ## Building from source
 
-You'll need [Rust and Cargo](https://www.rust-lang.org/tools/install).
+You'll need [Rust and Cargo](https://www.rust-lang.org/tools/install), Node.js 22 or newer, and the [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```bash
 git clone https://github.com/FaeyUmbrea/SnenkBridge.git
 cd SnenkBridge
 
-cargo build --release
+npm ci
+npm run tauri -- build
 ```
 
-Run the desktop application with `cargo run`.
+Run the desktop application with `npm run tauri -- dev`. Frontend changes reload while the app is running.
+
+Run `npm run check`, `npm run lint`, `npm test`, `cargo test --workspace`, and `cargo clippy --all-targets -- -D warnings` to verify changes.
 
 ---
 

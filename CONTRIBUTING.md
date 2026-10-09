@@ -11,7 +11,7 @@ This document describes the basic contribution process and the licensing terms t
 3. Make and test your changes.
 4. Open a pull request against the repository's main development branch.
 
-Follow the build instructions in [README.md](README.md) and the formatting, linting, and testing instructions below. You'll need Rust and Cargo with the repository's configured toolchain. Run `cargo test --workspace` to verify your changes.
+Follow the build instructions in [README.md](README.md) and the formatting, linting, and testing instructions below. You'll need Rust and Cargo with the repository's configured toolchain. Run `npm run check`, `npm run lint`, `npm test`, and `cargo test --workspace` to verify your changes.
 
 ## Pull requests
 
@@ -64,7 +64,7 @@ That's really all there is to it. Don't overthink the type - just pick whichever
 ## Code style
 
 - Run `cargo fmt` before committing (or set up your editor to do it on save)
-- Make sure `cargo clippy -- -D warnings` passes
+- Make sure `cargo clippy --all-targets -- -D warnings`, `npm run check`, and `npm run lint` pass with zero warnings
 - CI will check both of these automatically
 
 ## AI-assisted development

@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Local desktop window events and close handling",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
